@@ -3,13 +3,14 @@ import math
 import os
 from typing import List, Optional, Tuple, Dict
 
-from . import filesystem as fs
+from .model import CachedModel, Mod, ModelType
+
+from .filesystem import FileSystem
 from .import_bsp import Bsp
 from .wad import Wad
 
-from .spr import Spr, SpriteType
-from .import_mdl import MdlImporter
-from .mdl import Mdl, Sequence, SequenceFlags, SequenceMotionFlags
+from .spr import SpriteType
+from .mdl import Sequence, SequenceFlags, SequenceMotionFlags
 from .binary_reader import BinaryReader
 from . import nodes as gsr_nodes
 from mathutils import Euler, Vector, Matrix
@@ -182,84 +183,6 @@ def fov_to_focal_length(fov_deg, size):
     fov_rad = math.radians(fov_deg)
     return size / (2 * math.tan(fov_rad / 2))
 
-class ModelType(IntEnum):
-    BRUSH = 1
-    SPRITE = 2
-    ALIAS = 3
-    STUDIO = 4
-
-class CachedModel(MdlImporter):
-    _path: str | None = None
-    @property
-    def path(self) -> str:
-        if self._path is None:
-            path = fs.find_path(self.name)
-            if path is None:
-                raise Exception(f"Couldn't find path for {self.name}")
-            self._path = path
-
-        return self._path
-
-    _mdl: Mdl | None = None
-    @property
-    def mdl(self) -> Mdl:
-        if self._mdl is None:
-            self._mdl = Mdl.from_file(self.path)
-
-        return self._mdl
-
-    _spr: Spr | None = None
-    @property
-    def spr(self) -> Spr:
-        if self._spr is None:
-            self._spr = Spr.from_file(self.path)
-
-        return self._spr
-
-    _type: ModelType | None = None
-    @property
-    def type(self) -> ModelType:
-        if self._type is None:
-            if self.name.startswith("*"):
-                self._type = ModelType.BRUSH
-                return self._type
-
-            # if self.name == "" or self.name.endswith(".bsp"):
-            #     self._type = ModelType.BRUSH
-            #     return self._type
-
-            with open(self.path, "rb") as f:
-                magic = f.read(4)
-                match magic:
-                    case b"IDSP":
-                        self._type = ModelType.SPRITE
-                    case b"IDPO":
-                        self._type = ModelType.ALIAS
-                    case b"IDST":
-                        self._type = ModelType.STUDIO
-                    case _:
-                        raise Exception(f"Unknown model type for {self.name}")
-
-        return self._type
-
-    def __init__(self, name: str):
-        self.name = name
-
-    def create_object(self, scale: float, collection, no_depth_collection):
-        match self.type:
-            case ModelType.BRUSH:
-                obj = bpy.data.objects.get(f"model_{self.name[1:]}")
-                return obj
-            case ModelType.SPRITE:
-                obj = self.spr.create_object(self.name, scale, collection, no_depth_collection)
-                return obj
-            case ModelType.ALIAS:
-                print("We don't know how to draw alias!")
-                obj = bpy.data.objects.new("alias_empty", None)
-                return obj
-            case ModelType.STUDIO:
-                obj = self.mdl.create_object(scale, collection)
-                return obj
 
 class Camera:
     obj_fcurves = {}
@@ -401,18 +324,6 @@ class RenderFx(IntEnum):
     ClampMinScale = 20     # Keep this sprite from getting very small (SPRITES only!)
     LightMultiplier = 21   #CTM !!!CZERO added to tell the studiorender that the value in iuser2 is a lightmultiplier
 
-# mirrors Mod_ForName
-def model_for_name(model_cache: List[CachedModel], name: str) -> Optional[CachedModel]:
-    for model in model_cache:
-        if model.name == name:
-            # HACK HACK HACK HACK HACK
-            try:
-                model.path
-            except:
-                return None
-            return model
-    return None
-
 class Entity:
     prev_origin: Optional[tuple[float, float, float]] = None
     prev_angles: Optional[tuple[float, float, float]] = None
@@ -435,11 +346,11 @@ class Entity:
     gaityaw: float = 0.0
     gaitframe: float = 0.0
 
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, model_cache: List[CachedModel], players: List[PlayerInfo]):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, mod: Mod, players: List[PlayerInfo]):
         self.blender_scale = scale
 
         model_index: int = br.u32()
-        self.entity_model = model_cache[model_index]
+        self.entity_model = mod[model_index]
         self.model = self.entity_model
         self.player_index = br.u8()
         self.player = self.player_index != 255
@@ -451,7 +362,7 @@ class Entity:
         if self.player:
             self.player_info = players[self.player_index]
             model_name = self.player_info.model
-            model = model_for_name(model_cache, f"models/player/{model_name}/{model_name}.mdl")
+            model = mod.for_name(f"models/player/{model_name}/{model_name}.mdl", False)
             if model is None:
                 print(f"couldn't load player model!: {model_name}")
             else:
@@ -460,7 +371,7 @@ class Entity:
         # print(f"new entity: {model_index} {self.model.name}")
 
         # REVISIT: wish we could just get unlinked thing back from creation functions
-        self.object = self.model.create_object(self.blender_scale, collection, no_depth_collection)
+        self.object = self.model.create_object(mod, self.blender_scale, collection, no_depth_collection)
         # for weaponmodel
         self.collection = collection
 
@@ -570,9 +481,9 @@ class Entity:
                     local_rest = bl_bone.matrix_local.copy()
                 self._rest_local_inv[bone_name] = local_rest.inverted()
 
-        self.update(br, blender_frame, model_cache)
+        self.update(br, blender_frame, mod)
 
-    def update(self, br: GsrReader, blender_frame: int, model_cache: List[CachedModel]):
+    def update(self, br: GsrReader, blender_frame: int, mod: Mod):
         fields = br.object_fields()
 
         for field in fields:
@@ -640,11 +551,12 @@ class Entity:
                     if weaponmodel_index is None:
                         self.weaponmodel = None
                     else:
-                        self.weaponmodel = model_cache[weaponmodel_index]
+                        self.weaponmodel = mod[weaponmodel_index]
 
                 case _:
                     print(f"not implimented.... {field}")
 
+    # R_DrawBrushModel
     def draw_brush_model(self, blender_frame: int):
         # TODO: R_SetRenderMode
 
@@ -897,6 +809,7 @@ class Entity:
         if self.gaitframe < 0:
             self.gaitframe += gait_sequence.num_frames
 
+    # R_StudioDrawPlayer
     def draw_studio_player(self, blender_frame: int, time: float, prev_time: float) -> None:
         # TODO: handle playermodel change and top + bottom color
         origin, angles = self.studio_set_up_transform(time)
@@ -965,13 +878,14 @@ class Entity:
         self.prev_angles = self.angles
         self.prev_animtime = self.animtime
 
+    # R_StudioDrawModel
     def draw_studio_model(self, blender_frame: int, time: float):
         if self.renderfx == RenderFx.DeadPlayer:
             # TODO
             return
 
         if self.movetype == MoveType.FOLLOW:
-            print("movetype follow!")
+            print("INTERESTING: movetype follow!")
             # TODO
             return
 
@@ -1288,12 +1202,12 @@ class Beam:
     prev_flags: Optional[FBEAM] = None
     prev_frame: Optional[float] = None
 
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, model_cache: List[CachedModel]):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, mod: Mod):
         self.blender_scale = scale
 
         self.type = BeamType(br.i32())
         model_index = br.u32()
-        self.model = model_cache[model_index]
+        self.model = mod[model_index]
 
         # more should be shared here i think...
         self.framecount = len(self.model.spr.frames)
@@ -1638,16 +1552,108 @@ class Decal:
 class GsrImporter(bpy.types.Operator, ImportHelper):
     bl_idname = "gsr.import_file"
     bl_label = "GoldSrc State Recording (.gsr)"
+
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")
     filter_glob: bpy.props.StringProperty(default="*.gsr", options={'HIDDEN'})
 
+    base: bpy.props.StringProperty(
+        name="Base game directory",
+        subtype="DIR_PATH",
+        default="/home/levi/Desktop/hl"
+    )
+
+    import_mod: bpy.props.StringProperty(
+        name="Mod name",
+        default="valve",
+    )
+
+    addons_folder: bpy.props.BoolProperty(
+        name="Use addons folder",
+        default=True,
+    )
+
+    low_violence: bpy.props.BoolProperty(
+        name="Enable low violence mode",
+        default=False,
+    )
+
+    language: bpy.props.StringProperty(
+        name="Language",
+        default = "english",
+    )
+
+    hdmodels: bpy.props.BoolProperty(
+        name="Enable HD models",
+        default=False,
+    )
+
+    map: bpy.props.StringProperty(
+        name="Map",
+        default="crossfire.bsp",
+    )
+
+    scale: bpy.props.FloatProperty(
+        name="Scale",
+        default=0.01,
+    )
+
+    def draw(self, context):
+        layout = self.layout
+        assert layout is not None
+        layout.prop(self, "base")
+        layout.prop(self, "import_mod")
+        layout.prop(self, "addons_folder")
+        layout.prop(self, "low_violence")
+        layout.prop(self, "language")
+        layout.prop(self, "hdmodels")
+        layout.prop(self, "map")
+        layout.prop(self, "scale")
+
     def execute(self, context):
         try:
-            file = open(self.filepath, "rb")
-            self.br = GsrReader(file)
+            map_file = open(self.filepath, "rb")
+            self.br = GsrReader(map_file)
         except Exception as e:
             self.report({'ERROR'}, f"Failed to open file: {e}")
             return {"CANCELLED"}
+
+        base = self.base
+        if base.endswith("\\") or base.endswith("/"):
+            base = base[:-1]
+
+        self.fs = FileSystem(base)
+        # immediately undone by RemoveAllSearchPaths call in FileSystem_SetGameDirectory
+        # fs.add_search_path(self.base, "ROOT")
+
+        if self.low_violence:
+            self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}_lv", "GAME")
+
+        if self.addons_folder:
+            self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}_addon", "GAME")
+
+        if self.language != "english":
+            self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}_{self.language}", "GAME")
+            # maybe support "localization" dir
+
+        if self.hdmodels:
+            self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}_hd", "GAME")
+
+        self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}", "GAME")
+        self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}", "GAMECONFIG")
+        self.fs.add_search_path(f"{self.fs.base_dir}/{self.import_mod}_downloads", "GAMEDOWNLOADS")
+
+        self.fs.add_search_path(f"{self.fs.base_dir}", "BASE")
+        # FIXME: this is not accurate to engine
+        self.fs.add_search_path(f"{self.fs.base_dir}/valve", "DEFAULTGAME")
+        self.fs.add_search_path(f"{self.fs.base_dir}/platform", "PLATFORM")
+
+        map_name = f"maps/{self.map}"
+        map_file = self.fs.open(map_name, "rb")
+
+        if map_file is None:
+            raise Exception(f"Couldn't open {map_name}")
+
+        self.bsp = Bsp(self.fs, map_file)
 
         print(f"importing gsr from {self.filepath}")
 
@@ -1658,9 +1664,12 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
             name = self.br.fixed_string(length)
             self.decal_names.append(name)
 
-        self.bsp = Bsp("maps/crossfire.bsp")
-        # self.face_mesh_map = import_bsp.generate_face_mesh_map()
-        self.decal_wad = Wad("decals.wad")
+
+        wad_file = self.fs.open("decals.wad", "rb", "DEFAULTGAME")
+        if wad_file is None:
+            raise Exception(f"Couldn't find 'decals.wad' in \"DEFAULTGAME\" search path")
+
+        self.decal_wad = Wad(wad_file, "decals.wad")
 
         self.players = [
             PlayerInfo("", 0, 0, 0, 0.0, 0.0)
@@ -1668,7 +1677,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
         ]
 
         # because python classes share default :)))))))))))
-        self.model_cache: List[CachedModel] = []
+        self.mod: Mod = Mod()
         self.camera = None
         self.entities: Dict[int, Entity] = {}
         self.beams: Dict[int, Beam] = {}
@@ -1676,7 +1685,6 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
 
         self.frame = 1
         self.time = 0
-        self.scale = 0.01
 
         bpy.context.view_layer["draw_no_depth"] = 0
 
@@ -1748,6 +1756,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
                     case _:
                         raise Exception(f"unknown message type: {message_type}")
 
+            # R_DrawEntitiesOnList/ R_DrawTEntitiesOnList
             for (i, entity) in self.entities.items():
                 if not entity.draw:
                     continue
@@ -1792,7 +1801,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
         for _ in range(model_count):
             name_length = self.br.u8()
             name = self.br.fixed_string(name_length, "utf-8")
-            self.model_cache.append(CachedModel(name))
+            self.mod.append(CachedModel(self.fs, name))
 
     def parse_new_object(self, collection, no_depth_collection, viewmodel_collection):
         object_type = self.br.u8()
@@ -1805,10 +1814,10 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
                     self.camera = Camera(self.br, self.frame, self.scale)
             case ObjectType.Entity:
                 id = self.br.u32()
-                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, viewmodel_collection, self.model_cache, self.players)
+                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, viewmodel_collection, self.mod, self.players)
             case ObjectType.Beam:
                 id = self.br.u32()
-                self.beams[id] = Beam(self.br, self.frame, self.scale, collection, self.model_cache)
+                self.beams[id] = Beam(self.br, self.frame, self.scale, collection, self.mod)
             case _:
                 print(f"unexpected object type! {object_type}")
 
@@ -1827,7 +1836,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper):
                 if entity is None:
                     print(f"why don't we have this entity id!!!!!! {id}")
                     return
-                entity.update(self.br, self.frame, self.model_cache)
+                entity.update(self.br, self.frame, self.mod)
             case ObjectType.Beam:
                 id = self.br.u32()
                 beam = self.beams.get(id)

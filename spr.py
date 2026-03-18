@@ -57,7 +57,7 @@ class Spr:
         spr = _parse_spr(BinaryReader(file))
         return spr
 
-    def create_object(self, name: str, scale: float, collection, no_depth_collection):
+    def create_object(self, name: str, scale: float, collection, no_depth_collection) -> bpy.types.Object:
         frame = self.frames[0]
 
         left  =  frame.origin_x * scale

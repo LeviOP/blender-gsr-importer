@@ -2,8 +2,11 @@ from enum import IntFlag
 import math
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Tuple
+from typing import BinaryIO, List, Optional, Dict, Tuple
 import io
+import bpy
+
+from .model import Mod
 from . import binary_reader
 
 class BinaryReader(binary_reader.BinaryReader):
@@ -433,7 +436,7 @@ class Mdl:
     # Public API
     # ------------------------------------------------------------------
 
-    def create_object(self, scale: float, collection, body_hidden_driver: bool = True) -> 'bpy.types.Object':
+    def create_object(self, mod: Mod, name: str, scale: float, collection, body_hidden_driver: bool = True) -> 'bpy.types.Object':
         """
         Import this MDL into the current Blender scene.
 
@@ -443,14 +446,12 @@ class Mdl:
 
         Returns the armature object linked into the active scene collection.
         """
-        import bpy
-
         armature_obj, bone_transforms = self._get_or_build_armature(scale, collection)
 
         for body_part in self.body_parts:
             for body_part_model in body_part.models:
                 self._create_body_part_mesh(
-                    body_part_model, armature_obj, bone_transforms, scale, collection, body_hidden_driver
+                    body_part_model, armature_obj, bone_transforms, mod, name, scale, collection, body_hidden_driver
                 )
 
         return armature_obj
@@ -519,6 +520,8 @@ class Mdl:
         body_part_model: 'Model',
         armature_obj: 'bpy.types.Object',
         bone_transforms: List,
+        mod: Mod,
+        name: str,
         scale: float,
         collection,
         body_hidden_driver: bool,
@@ -555,16 +558,22 @@ class Mdl:
 
         for mesh_part in body_part_model.meshes:
             skin_ref = mesh_part.skin_ref
+            # not sure if this is the best way to do things but it works for now...
+            # R_LoadTextures
+            if len(self.textures) == 0:
+                textures = mod.for_name(f"{name}T.mdl", True).mdl.textures
+            else:
+                textures = self.textures
             if skin_ref not in mat_slot:
-                if 0 <= skin_ref < len(self.textures):
+                if 0 <= skin_ref < len(textures):
                     mat_slot[skin_ref] = _blender_material_from_texture(
-                        self.textures[skin_ref], self.header.name, obj
+                        textures[skin_ref], self.header.name, obj
                     )
                 else:
                     mat_slot[skin_ref] = 0
 
-            tw = self.textures[skin_ref].width  if 0 <= skin_ref < len(self.textures) else 1
-            th = self.textures[skin_ref].height if 0 <= skin_ref < len(self.textures) else 1
+            tw = textures[skin_ref].width  if 0 <= skin_ref < len(textures) else 1
+            th = textures[skin_ref].height if 0 <= skin_ref < len(textures) else 1
 
             verts = mesh_part.vertices
             for i in range(0, len(verts) - 2, 3):
@@ -711,7 +720,7 @@ class Mdl:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def from_file(filepath: str) -> 'Mdl':
+    def from_file(file: BinaryIO) -> 'Mdl':
         """
         Load a GoldSrc MDL file.  If the main header has no textures
         (textureindex == 0), a companion *T.mdl texture file is located
@@ -721,18 +730,17 @@ class Mdl:
         yet, but the sequence_groups list on the result exposes the metadata
         needed to do so in the future.
         """
-        with open(filepath, 'rb') as f:
-            mdl = _parse_mdl(BinaryReader(f))
+        mdl = _parse_mdl(BinaryReader(file))
 
         # If the main file carries no texture data, look for a separate
         # texture header (e.g. "playerT.mdl" alongside "player.mdl").
-        if not mdl.textures:
-            texture_path = _derive_texture_filepath(filepath)
-            if texture_path and os.path.isfile(texture_path):
-                with open(texture_path, 'rb') as f:
-                    tex_mdl = _parse_mdl(BinaryReader(f))
-                mdl.textures = tex_mdl.textures
-                mdl.skins    = tex_mdl.skins
+        # if not mdl.textures:
+        #     texture_path = _derive_texture_filepath(filepath)
+        #     if texture_path and os.path.isfile(texture_path):
+        #         with open(texture_path, 'rb') as f:
+        #             tex_mdl = _parse_mdl(BinaryReader(f))
+        #         mdl.textures = tex_mdl.textures
+        #         mdl.skins    = tex_mdl.skins
 
         return mdl
 
