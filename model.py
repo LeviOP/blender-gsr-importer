@@ -18,7 +18,6 @@ class Mod(list['CachedModel']):
 
         return None
 
-
 from .mdl import Mdl
 from .spr import Spr
 from .filesystem import FileSystem
@@ -35,7 +34,6 @@ class CachedModel():
     def file(self) -> BinaryIO:
         if self._file is None:
             self._file = self.fs.open(self.name, "rb")
-            print(self._file)
             if self._file is None:
                 raise Exception(f"{self.name} not found")
 
@@ -91,6 +89,7 @@ class CachedModel():
     def create_object(self, mod: Mod, scale: float, collection, no_depth_collection) -> bpy.types.Object:
         match self.type:
             case ModelType.BRUSH:
+                # TODO: ensure that stuff actually exists!
                 obj = bpy.data.objects.get(f"model_{self.name[1:]}")
                 return obj
             case ModelType.SPRITE:
@@ -101,6 +100,5 @@ class CachedModel():
                 obj = bpy.data.objects.new("alias_empty", None)
                 return obj
             case ModelType.STUDIO:
-                print("creating thing!", self.name)
-                obj = self.mdl.create_object(mod, self.name, scale, collection)
+                obj = self.mdl.create_object(mod, self.name, self.fs, scale, collection)
                 return obj

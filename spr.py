@@ -54,6 +54,7 @@ class Spr:
 
     @staticmethod
     def from_file(file: BinaryIO) -> 'Spr':
+        file.seek(0)
         spr = _parse_spr(BinaryReader(file))
         return spr
 

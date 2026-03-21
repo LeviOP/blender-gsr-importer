@@ -8,6 +8,7 @@ import bpy
 
 from .model import Mod
 from . import binary_reader
+from .filesystem import FileSystem
 
 class BinaryReader(binary_reader.BinaryReader):
     def vec2(self) -> 'Vector2':
@@ -436,7 +437,7 @@ class Mdl:
     # Public API
     # ------------------------------------------------------------------
 
-    def create_object(self, mod: Mod, name: str, scale: float, collection, body_hidden_driver: bool = True) -> 'bpy.types.Object':
+    def create_object(self, mod: Mod, name: str, fs: FileSystem, scale: float, collection, body_hidden_driver: bool = True) -> 'bpy.types.Object':
         """
         Import this MDL into the current Blender scene.
 
@@ -451,7 +452,7 @@ class Mdl:
         for body_part in self.body_parts:
             for body_part_model in body_part.models:
                 self._create_body_part_mesh(
-                    body_part_model, armature_obj, bone_transforms, mod, name, scale, collection, body_hidden_driver
+                    body_part_model, armature_obj, bone_transforms, mod, name, fs, scale, collection, body_hidden_driver
                 )
 
         return armature_obj
@@ -522,6 +523,7 @@ class Mdl:
         bone_transforms: List,
         mod: Mod,
         name: str,
+        fs: FileSystem,
         scale: float,
         collection,
         body_hidden_driver: bool,
@@ -558,10 +560,21 @@ class Mdl:
 
         for mesh_part in body_part_model.meshes:
             skin_ref = mesh_part.skin_ref
-            # not sure if this is the best way to do things but it works for now...
             # R_LoadTextures
             if len(self.textures) == 0:
-                textures = mod.for_name(f"{name}T.mdl", True).mdl.textures
+                texture_file_name = f"{name[:-4]}T.mdl"
+                model = mod.for_name(texture_file_name, False)
+                if model is not None:
+                    textures = model.mdl.textures
+                else:
+                    # HACKHACK: we have to do this because BB check can cause texture not
+                    # to be drawn (therefore not added to mod_known) but it will still be
+                    # in cl_visedicts meaning we are going to "draw" it :)))
+                    texture_file = fs.open(texture_file_name, "rb")
+                    if texture_file is None:
+                        raise Exception(f"{texture_file_name} not found")
+                    texture_mdl = _parse_mdl(BinaryReader(texture_file))
+                    textures=  texture_mdl.textures
             else:
                 textures = self.textures
             if skin_ref not in mat_slot:
@@ -730,6 +743,7 @@ class Mdl:
         yet, but the sequence_groups list on the result exposes the metadata
         needed to do so in the future.
         """
+        file.seek(0)
         mdl = _parse_mdl(BinaryReader(file))
 
         # If the main file carries no texture data, look for a separate

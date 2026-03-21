@@ -250,6 +250,7 @@ class Bsp:
         self.entities = self.load_entities(self.header.lumps[LUMP.ENTITIES])
         self.textures = self.load_textures(self.header.lumps[LUMP.TEXTURES])
         self.texinfo = list(iter_lump_structs(self.file, self.header.lumps[LUMP.TEXINFO], TexInfo))
+        self.faces = list(iter_lump_structs(self.file, self.header.lumps[LUMP.FACES], Face))
 
     def load_entities(self, lump: Lump) -> Optional[str]:
         if lump.length == 0:
@@ -491,7 +492,7 @@ class Bsp:
 
                     pos = Vector(self.vertices[vert_index])
                     if vert_index not in vert_cache:
-                        vert_cache[vert_index ] = bm.verts.new(pos * scale)
+                        vert_cache[vert_index ] = bm.verts.new(pos * scale) # type: ignore
 
                     face_verts.append(vert_cache[vert_index])
                     face_vert_positions.append(pos)
@@ -506,7 +507,7 @@ class Bsp:
                 t = Vector(face_texinfo.t)
 
                 try:
-                    bm_face = bm.faces.new(reversed(face_verts))
+                    bm_face = bm.faces.new(reversed(face_verts)) # type: ignore
                     bm.faces.ensure_lookup_table()
                 except ValueError:
                     duplicate_faces += 1
@@ -554,14 +555,14 @@ class Bsp:
             current = texture
             for _ in range(texture.anim_total):
                 main_frames.append(current)
-                current = current.anim_next
+                current: Texture = current.anim_next # type: ignore
 
             alt_frames: list[Texture] = []
             if texture.alternate_anims is not None:
                 current = texture.alternate_anims
                 for _ in range(texture.alternate_anims.anim_total):
                     alt_frames.append(current)
-                    current = current.anim_next
+                    current: Texture = current.anim_next # type: ignore
 
             frames = main_frames + alt_frames
 
@@ -577,20 +578,19 @@ class Bsp:
                         dst = (y * atlas_w + fi * frame_w + x) * 4
                         atlas_pixels[dst:dst+4] = frame.pixels[src:src+4]
 
-            image: bpy.types.Image = bpy.data.images.new(texture.name + "_atlas", atlas_w, frame_h, alpha=True)
-            image.pixels = atlas_pixels
+            image: bpy.types.Image = bpy.data.images.new(texture.name, atlas_w, frame_h, alpha=True)
+            image.pixels = atlas_pixels # type: ignore
             image.pack()
 
             material = bpy.data.materials.new(texture.name)
             nodes = material.node_tree.nodes
             links = material.node_tree.links
             nodes.clear()
-            # gsr_nodes.setup_anim_bsp_nodes(nodes, links, image, texture.anim_total)
-            gsr_nodes.setup_bsp_nodes(nodes, links, image)
+            gsr_nodes.setup_anim_bsp_nodes(nodes, links, image, len(main_frames), len(alt_frames))
             return material
 
         image: bpy.types.Image = bpy.data.images.new(texture.name, texture.width, texture.height, alpha=True)
-        image.pixels = texture.pixels
+        image.pixels = texture.pixels # type: ignore
         image.pack()
 
         material = bpy.data.materials.new(texture.name)

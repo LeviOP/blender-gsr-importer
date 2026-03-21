@@ -1891,6 +1891,322 @@ def beam_1_node_group():
 
     return beam_1
 
+def animated_texture_1_node_group():
+    """Initialize Animated Texture node group"""
+    animated_texture_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "Animated Texture")
+
+    animated_texture_1.color_tag = 'NONE'
+    animated_texture_1.description = ""
+    animated_texture_1.default_group_node_width = 140
+    # animated_texture_1 interface
+
+    # Socket Vector
+    vector_socket = animated_texture_1.interface.new_socket(name="Vector", in_out='OUTPUT', socket_type='NodeSocketVector')
+    vector_socket.default_value = (0.0, 0.0, 0.0)
+    vector_socket.min_value = -3.4028234663852886e+38
+    vector_socket.max_value = 3.4028234663852886e+38
+    vector_socket.subtype = 'NONE'
+    vector_socket.attribute_domain = 'POINT'
+    vector_socket.default_input = 'VALUE'
+    vector_socket.structure_type = 'AUTO'
+
+    # Socket Main Frames
+    main_frames_socket = animated_texture_1.interface.new_socket(name="Main Frames", in_out='INPUT', socket_type='NodeSocketInt')
+    main_frames_socket.default_value = 0
+    main_frames_socket.min_value = -2147483648
+    main_frames_socket.max_value = 2147483647
+    main_frames_socket.subtype = 'NONE'
+    main_frames_socket.attribute_domain = 'POINT'
+    main_frames_socket.default_input = 'VALUE'
+    main_frames_socket.structure_type = 'AUTO'
+
+    # Socket Alt Frames
+    alt_frames_socket = animated_texture_1.interface.new_socket(name="Alt Frames", in_out='INPUT', socket_type='NodeSocketInt')
+    alt_frames_socket.default_value = 0
+    alt_frames_socket.min_value = -2147483648
+    alt_frames_socket.max_value = 2147483647
+    alt_frames_socket.subtype = 'NONE'
+    alt_frames_socket.attribute_domain = 'POINT'
+    alt_frames_socket.default_input = 'VALUE'
+    alt_frames_socket.structure_type = 'AUTO'
+
+    # Initialize animated_texture_1 nodes
+
+    # Node Group Output
+    group_output = animated_texture_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Node Group Input
+    group_input = animated_texture_1.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+
+    # Node Attribute.001
+    attribute_001 = animated_texture_1.nodes.new("ShaderNodeAttribute")
+    attribute_001.name = "Attribute.001"
+    attribute_001.attribute_name = "animation_time"
+    attribute_001.attribute_type = 'VIEW_LAYER'
+
+    # Node Math
+    math = animated_texture_1.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'MODULO'
+    math.use_clamp = False
+
+    # Node Texture Coordinate
+    texture_coordinate = animated_texture_1.nodes.new("ShaderNodeTexCoord")
+    texture_coordinate.name = "Texture Coordinate"
+    texture_coordinate.from_instancer = False
+
+    # Node Separate XYZ.001
+    separate_xyz_001 = animated_texture_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz_001.name = "Separate XYZ.001"
+
+    # Node Combine XYZ
+    combine_xyz = animated_texture_1.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz.name = "Combine XYZ"
+    # Z
+    combine_xyz.inputs[2].default_value = 0.0
+
+    # Node Math.002
+    math_002 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'FRACT'
+    math_002.use_clamp = False
+
+    # Node Math.003
+    math_003 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_003.name = "Math.003"
+    math_003.operation = 'ADD'
+    math_003.use_clamp = False
+
+    # Node Math.004
+    math_004 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_004.name = "Math.004"
+    math_004.operation = 'DIVIDE'
+    math_004.use_clamp = False
+
+    # Node Attribute.002
+    attribute_002 = animated_texture_1.nodes.new("ShaderNodeAttribute")
+    attribute_002.name = "Attribute.002"
+    attribute_002.attribute_name = "frame"
+    attribute_002.attribute_type = 'OBJECT'
+
+    # Node Math.001
+    math_001 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'COMPARE'
+    math_001.use_clamp = True
+    # Value_001
+    math_001.inputs[1].default_value = 0.0
+    # Value_002
+    math_001.inputs[2].default_value = 0.0
+
+    # Node Math.005
+    math_005 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_005.name = "Math.005"
+    math_005.operation = 'MODULO'
+    math_005.use_clamp = False
+
+    # Node Math.006
+    math_006 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_006.name = "Math.006"
+    math_006.operation = 'ADD'
+    math_006.use_clamp = False
+
+    # Node Mix
+    mix = animated_texture_1.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'MIX'
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    mix.data_type = 'FLOAT'
+    mix.factor_mode = 'UNIFORM'
+
+    # Node Math.007
+    math_007 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_007.name = "Math.007"
+    math_007.operation = 'ADD'
+    math_007.use_clamp = False
+
+    # Set locations
+    animated_texture_1.nodes["Group Output"].location = (720.0, -180.0)
+    animated_texture_1.nodes["Group Input"].location = (-560.0, 40.0)
+    animated_texture_1.nodes["Attribute.001"].location = (-560.0, -60.0)
+    animated_texture_1.nodes["Math"].location = (-240.0, -120.0)
+    animated_texture_1.nodes["Texture Coordinate"].location = (-240.0, -280.0)
+    animated_texture_1.nodes["Separate XYZ.001"].location = (-80.0, -200.0)
+    animated_texture_1.nodes["Combine XYZ"].location = (560.0, -180.0)
+    animated_texture_1.nodes["Math.002"].location = (80.0, -100.0)
+    animated_texture_1.nodes["Math.003"].location = (240.0, 60.0)
+    animated_texture_1.nodes["Math.004"].location = (400.0, 60.0)
+    animated_texture_1.nodes["Attribute.002"].location = (-400.0, 220.0)
+    animated_texture_1.nodes["Math.001"].location = (-240.0, 220.0)
+    animated_texture_1.nodes["Math.005"].location = (-400.0, 40.0)
+    animated_texture_1.nodes["Math.006"].location = (-240.0, 40.0)
+    animated_texture_1.nodes["Mix"].location = (-80.0, 40.0)
+    animated_texture_1.nodes["Math.007"].location = (240.0, -100.0)
+
+    # Set dimensions
+    animated_texture_1.nodes["Group Output"].width  = 140.0
+    animated_texture_1.nodes["Group Output"].height = 100.0
+
+    animated_texture_1.nodes["Group Input"].width  = 140.0
+    animated_texture_1.nodes["Group Input"].height = 100.0
+
+    animated_texture_1.nodes["Attribute.001"].width  = 140.0
+    animated_texture_1.nodes["Attribute.001"].height = 100.0
+
+    animated_texture_1.nodes["Math"].width  = 140.0
+    animated_texture_1.nodes["Math"].height = 100.0
+
+    animated_texture_1.nodes["Texture Coordinate"].width  = 140.0
+    animated_texture_1.nodes["Texture Coordinate"].height = 100.0
+
+    animated_texture_1.nodes["Separate XYZ.001"].width  = 140.0
+    animated_texture_1.nodes["Separate XYZ.001"].height = 100.0
+
+    animated_texture_1.nodes["Combine XYZ"].width  = 140.0
+    animated_texture_1.nodes["Combine XYZ"].height = 100.0
+
+    animated_texture_1.nodes["Math.002"].width  = 140.0
+    animated_texture_1.nodes["Math.002"].height = 100.0
+
+    animated_texture_1.nodes["Math.003"].width  = 140.0
+    animated_texture_1.nodes["Math.003"].height = 100.0
+
+    animated_texture_1.nodes["Math.004"].width  = 140.0
+    animated_texture_1.nodes["Math.004"].height = 100.0
+
+    animated_texture_1.nodes["Attribute.002"].width  = 140.0
+    animated_texture_1.nodes["Attribute.002"].height = 100.0
+
+    animated_texture_1.nodes["Math.001"].width  = 140.0
+    animated_texture_1.nodes["Math.001"].height = 100.0
+
+    animated_texture_1.nodes["Math.005"].width  = 140.0
+    animated_texture_1.nodes["Math.005"].height = 100.0
+
+    animated_texture_1.nodes["Math.006"].width  = 140.0
+    animated_texture_1.nodes["Math.006"].height = 100.0
+
+    animated_texture_1.nodes["Mix"].width  = 140.0
+    animated_texture_1.nodes["Mix"].height = 100.0
+
+    animated_texture_1.nodes["Math.007"].width  = 140.0
+    animated_texture_1.nodes["Math.007"].height = 100.0
+
+
+    # Initialize animated_texture_1 links
+
+    # mix.Result -> math_003.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Mix"].outputs[0],
+        animated_texture_1.nodes["Math.003"].inputs[0]
+    )
+    # attribute_001.Factor -> math_005.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Attribute.001"].outputs[2],
+        animated_texture_1.nodes["Math.005"].inputs[0]
+    )
+    # math_001.Value -> mix.Factor
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.001"].outputs[0],
+        animated_texture_1.nodes["Mix"].inputs[0]
+    )
+    # attribute_002.Factor -> math_001.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Attribute.002"].outputs[2],
+        animated_texture_1.nodes["Math.001"].inputs[0]
+    )
+    # math_002.Value -> math_003.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.002"].outputs[0],
+        animated_texture_1.nodes["Math.003"].inputs[1]
+    )
+    # separate_xyz_001.Y -> combine_xyz.Y
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Separate XYZ.001"].outputs[1],
+        animated_texture_1.nodes["Combine XYZ"].inputs[1]
+    )
+    # attribute_001.Factor -> math.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Attribute.001"].outputs[2],
+        animated_texture_1.nodes["Math"].inputs[0]
+    )
+    # math_005.Value -> math_006.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.005"].outputs[0],
+        animated_texture_1.nodes["Math.006"].inputs[0]
+    )
+    # math_004.Value -> combine_xyz.X
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.004"].outputs[0],
+        animated_texture_1.nodes["Combine XYZ"].inputs[0]
+    )
+    # math_003.Value -> math_004.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.003"].outputs[0],
+        animated_texture_1.nodes["Math.004"].inputs[0]
+    )
+    # separate_xyz_001.X -> math_002.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Separate XYZ.001"].outputs[0],
+        animated_texture_1.nodes["Math.002"].inputs[0]
+    )
+    # texture_coordinate.UV -> separate_xyz_001.Vector
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Texture Coordinate"].outputs[2],
+        animated_texture_1.nodes["Separate XYZ.001"].inputs[0]
+    )
+    # combine_xyz.Vector -> group_output.Vector
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Combine XYZ"].outputs[0],
+        animated_texture_1.nodes["Group Output"].inputs[0]
+    )
+    # group_input.Main Frames -> math.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Group Input"].outputs[0],
+        animated_texture_1.nodes["Math"].inputs[1]
+    )
+    # group_input.Alt Frames -> math_005.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Group Input"].outputs[1],
+        animated_texture_1.nodes["Math.005"].inputs[1]
+    )
+    # group_input.Main Frames -> math_006.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Group Input"].outputs[0],
+        animated_texture_1.nodes["Math.006"].inputs[1]
+    )
+    # group_input.Main Frames -> math_007.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Group Input"].outputs[0],
+        animated_texture_1.nodes["Math.007"].inputs[0]
+    )
+    # group_input.Alt Frames -> math_007.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Group Input"].outputs[1],
+        animated_texture_1.nodes["Math.007"].inputs[1]
+    )
+    # math_007.Value -> math_004.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.007"].outputs[0],
+        animated_texture_1.nodes["Math.004"].inputs[1]
+    )
+    # math_006.Value -> mix.A
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.006"].outputs[0],
+        animated_texture_1.nodes["Mix"].inputs[2]
+    )
+    # math.Value -> mix.B
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math"].outputs[0],
+        animated_texture_1.nodes["Mix"].inputs[3]
+    )
+
+    return animated_texture_1
+
 BUILDERS = {
     "Sprite Color": sprite_color_1_node_group,
     "Sprite Frame Offset": sprite_frame_offset_1_node_group,
@@ -1899,6 +2215,7 @@ BUILDERS = {
     "Transparent Geometry": transparent_geometry_1_node_group,
     "GoldSrc Emissive": goldsrc_emissive_1_node_group,
     "Beam Segment": beam_1_node_group,
+    "Animated Texture": animated_texture_1_node_group,
 }
 
 def ensure_group(name: str):
@@ -3181,4 +3498,138 @@ def setup_decal_nodes(nodes, links, image):
     links.new(
         nodes["Image Texture"].outputs[1],
         nodes["Float Curve"].inputs[1]
+    )
+
+def setup_anim_bsp_nodes(nodes, links, image, main_frame_count, alt_frame_count):
+    # Node Principled BSDF
+    principled_bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+    principled_bsdf.name = "Principled BSDF"
+    principled_bsdf.distribution = 'MULTI_GGX'
+    principled_bsdf.subsurface_method = 'RANDOM_WALK'
+    # Metallic
+    principled_bsdf.inputs[1].default_value = 0.0
+    # Roughness
+    principled_bsdf.inputs[2].default_value = 1.0
+    # IOR
+    principled_bsdf.inputs[3].default_value = 1.0
+    # Alpha
+    principled_bsdf.inputs[4].default_value = 1.0
+    # Normal
+    principled_bsdf.inputs[5].default_value = (0.0, 0.0, 0.0)
+    # Diffuse Roughness
+    principled_bsdf.inputs[7].default_value = 0.0
+    # Subsurface Weight
+    principled_bsdf.inputs[8].default_value = 0.0
+    # Subsurface Radius
+    principled_bsdf.inputs[9].default_value = (1.0, 0.20000000298023224, 0.10000000149011612)
+    # Subsurface Scale
+    principled_bsdf.inputs[10].default_value = 0.05000000074505806
+    # Subsurface Anisotropy
+    principled_bsdf.inputs[12].default_value = 0.0
+    # Specular IOR Level
+    principled_bsdf.inputs[13].default_value = 0.0
+    # Specular Tint
+    principled_bsdf.inputs[14].default_value = (1.0, 1.0, 1.0, 1.0)
+    # Anisotropic
+    principled_bsdf.inputs[15].default_value = 0.0
+    # Anisotropic Rotation
+    principled_bsdf.inputs[16].default_value = 0.0
+    # Tangent
+    principled_bsdf.inputs[17].default_value = (0.0, 0.0, 0.0)
+    # Transmission Weight
+    principled_bsdf.inputs[18].default_value = 0.0
+    # Coat Weight
+    principled_bsdf.inputs[19].default_value = 0.0
+    # Coat Roughness
+    principled_bsdf.inputs[20].default_value = 0.029999999329447746
+    # Coat IOR
+    principled_bsdf.inputs[21].default_value = 1.5
+    # Coat Tint
+    principled_bsdf.inputs[22].default_value = (1.0, 1.0, 1.0, 1.0)
+    # Coat Normal
+    principled_bsdf.inputs[23].default_value = (0.0, 0.0, 0.0)
+    # Sheen Weight
+    principled_bsdf.inputs[24].default_value = 0.0
+    # Sheen Roughness
+    principled_bsdf.inputs[25].default_value = 0.5
+    # Sheen Tint
+    principled_bsdf.inputs[26].default_value = (1.0, 1.0, 1.0, 1.0)
+    # Emission Color
+    principled_bsdf.inputs[27].default_value = (1.0, 1.0, 1.0, 1.0)
+    # Emission Strength
+    principled_bsdf.inputs[28].default_value = 0.0
+    # Thin Film Thickness
+    principled_bsdf.inputs[29].default_value = 0.0
+    # Thin Film IOR
+    principled_bsdf.inputs[30].default_value = 1.3300000429153442
+
+    # Node Material Output
+    material_output = nodes.new("ShaderNodeOutputMaterial")
+    material_output.name = "Material Output"
+    material_output.is_active_output = True
+    material_output.target = 'ALL'
+    # Displacement
+    material_output.inputs[2].default_value = (0.0, 0.0, 0.0)
+    # Thickness
+    material_output.inputs[3].default_value = 0.0
+
+    # Node Image Texture
+    image_texture = nodes.new("ShaderNodeTexImage")
+    image_texture.name = "Image Texture"
+    image_texture.extension = 'REPEAT'
+    image_texture.image = image
+    image_texture.image_user.frame_current = 0
+    image_texture.image_user.frame_duration = 100
+    image_texture.image_user.frame_offset = 0
+    image_texture.image_user.frame_start = 1
+    image_texture.image_user.tile = 0
+    image_texture.image_user.use_auto_refresh = False
+    image_texture.image_user.use_cyclic = False
+    image_texture.interpolation = 'Closest'
+    image_texture.projection = 'FLAT'
+    image_texture.projection_blend = 0.0
+
+    # Node Animated Texture
+    animated_texture = new(nodes, "Animated Texture")
+    # Socket_1
+    animated_texture.inputs[0].default_value = main_frame_count
+    # Socket_2
+    animated_texture.inputs[1].default_value = alt_frame_count
+
+    # Set locations
+    nodes["Principled BSDF"].location = (-200.0, 100.0)
+    nodes["Material Output"].location = (60.0, 100.0)
+    nodes["Image Texture"].location = (-460.0, 100.0)
+    animated_texture.location = (-620.0, -40.0)
+
+    # Set dimensions
+    nodes["Principled BSDF"].width  = 240.0
+    nodes["Principled BSDF"].height = 100.0
+
+    nodes["Material Output"].width  = 140.0
+    nodes["Material Output"].height = 100.0
+
+    nodes["Image Texture"].width  = 240.0
+    nodes["Image Texture"].height = 100.0
+
+    animated_texture.width  = 140.0
+    animated_texture.height = 100.0
+
+
+    # Initialize shader_nodetree links
+
+    # principled_bsdf.BSDF -> material_output.Surface
+    links.new(
+        nodes["Principled BSDF"].outputs[0],
+        nodes["Material Output"].inputs[0]
+    )
+    # image_texture.Color -> principled_bsdf.Base Color
+    links.new(
+        nodes["Image Texture"].outputs[0],
+        nodes["Principled BSDF"].inputs[0]
+    )
+    # animated_texture.Vector -> image_texture.Vector
+    links.new(
+        animated_texture.outputs[0],
+        nodes["Image Texture"].inputs[0]
     )
