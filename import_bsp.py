@@ -115,6 +115,7 @@ LIGHTS: dict[str, float] = {
 #
 #     return _map_cache
 
+from typing import Optional
 import bpy
 
 from .filesystem import FileSystem
@@ -162,7 +163,7 @@ class BspImporter(bpy.types.Operator):
 
     map: bpy.props.StringProperty(
         name="Map",
-        default="crossfire.bsp",
+        default="c1a0.bsp",
     )
 
     scale: bpy.props.FloatProperty(
@@ -220,9 +221,29 @@ class BspImporter(bpy.types.Operator):
         if file is None:
             raise Exception(f"Couldn't open {map}")
 
+        texture_emissive_map: dict[str, tuple[float, Optional[tuple[int, int, int]]]] = {
+            "~light3b": (50, None),
+            "+0~fifts_lght5": (25, None),
+            "~light5a": (100, None),
+            "+0~generic85": (100, None),
+            "+0~generic86r": (50, None),
+            "+a~fifts_lght3": (10, None),
+            "+0~light4a": (50, None),
+            "~light3c": (50, None),
+            "+0~fifts_lght01": (25, None),
+            "~spotyellow": (75, None),
+            "~spotblue": (10, None),
+            "+0~fifties_lgt2": (25, None),
+            "drkmtl_scrn3": (25, (50, 183, 255)),
+            "+0drkmtl_scrn": (25, None),
+            "+0~lab_crt8": (25, None),
+            "+0~light5a": (50, None),
+        }
+
         bsp = Bsp(fs, file)
         collection = bpy.data.collections.new("bsp")
-        bsp.create_models(self.scale, collection)
+        bsp.create_models(self.scale, collection, texture_emissive_map)
+        bsp.create_lights(self.scale, collection)
         bpy.context.scene.collection.children.link(collection)
 
         return {"FINISHED"}

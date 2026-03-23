@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 import math
@@ -19,6 +20,7 @@ from .model import CachedModel, Mod, ModelType
 from .mdl import Sequence, SequenceFlags, SequenceMotionFlags
 from .spr import SpriteType
 from .wad import Wad
+from .tga import Tga
 
 class ObjectType(IntEnum):
     Camera = 0
@@ -31,6 +33,8 @@ class MessageType(IntEnum):
     UpdateObject = 2
     UpdatePlayer = 3
     UpdateDecals = 4
+    UpdateLightstyles = 5
+    SetSkyname = 6
 
 class ObjectField(IntEnum):
     Origin = 0
@@ -64,9 +68,6 @@ class PlayerField(IntEnum):
     Model = 0
     TopColor = 1
     BottomColor = 2
-    GaitSequence = 3
-    GaitFrame = 4
-    GaitYaw = 5
 
 class GsrReader(BinaryReader):
     def object_fields(self):
@@ -142,12 +143,6 @@ class GsrReader(BinaryReader):
                 return (PlayerField.TopColor, self.i32())
             case PlayerField.BottomColor:
                 return (PlayerField.BottomColor, self.i32())
-            case PlayerField.GaitSequence:
-                return (PlayerField.GaitSequence, self.i32())
-            case PlayerField.GaitFrame:
-                return (PlayerField.GaitFrame, self.f32())
-            case PlayerField.GaitYaw:
-                return (PlayerField.GaitYaw, self.f32())
 
 # def goldsrc_to_blender_location(goldsrc_pos: tuple[float, float, float], scale: float) -> tuple[float, float, float]:
 #     x, y, z = goldsrc_pos
@@ -490,6 +485,10 @@ class Entity:
         self.update(br, blender_frame)
 
     def update(self, br: GsrReader, blender_frame: int):
+        old_animtime = getattr(self, "animtime", None)
+        old_origin = getattr(self, "origin", None)
+        old_angles = getattr(self, "angles", None)
+
         fields = br.object_fields()
         # if True:
         #     return
@@ -563,6 +562,12 @@ class Entity:
 
                 case _:
                     print(f"not implimented.... {field}")
+
+        # CL_ProcessEntityUpdate -> R_UpdateLatchedVars
+        if self.animtime != old_animtime or self.movetype != MoveType.NONE:
+            self.prev_animtime = old_animtime
+            self.prev_origin = old_origin
+            self.prev_angles = old_angles
 
     # R_DrawBrushModel
     def draw_brush_model(self, blender_frame: int):
@@ -650,6 +655,7 @@ class Entity:
             # apply roll only
             self.obj_fcurves["rotation_euler"][1].keyframe_points.insert(blender_frame, rotation_euler[1]).interpolation = "CONSTANT"
 
+    # R_StudioSetUpTransform
     def studio_set_up_transform(self, time: float) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
         origin: tuple[float, float, float] = self.origin
         angles: tuple[float, float, float] = self.angles
@@ -884,9 +890,9 @@ class Entity:
 
             self.prev_weaponmodel = None
 
-        self.prev_origin = self.origin
-        self.prev_angles = self.angles
-        self.prev_animtime = self.animtime
+        # self.prev_origin = self.origin
+        # self.prev_angles = self.angles
+        # self.prev_animtime = self.animtime
 
     # R_StudioDrawModel
     def draw_studio_model(self, blender_frame: int, time: float):
@@ -916,9 +922,9 @@ class Entity:
         if f is not None:
             self.apply_animation_frame(blender_frame, f)
 
-        self.prev_origin = self.origin
-        self.prev_angles = self.angles
-        self.prev_animtime = self.animtime
+        # self.prev_origin = self.origin
+        # self.prev_angles = self.angles
+        # self.prev_animtime = self.animtime
 
     def apply_body(self, blender_frame: int):
         for body_part in self.model.mdl.body_parts:
@@ -973,6 +979,7 @@ class Entity:
 
         return blend, pitch
 
+    # R_StudioCalcBoneAdj
     def studio_calc_bone_adj(self, controller_value: float) -> list[float]:
         adj: list[float] = []
 
@@ -1559,6 +1566,9 @@ class Decal:
     object: bpy.types.Object
     fcurves: dict[str, bpy.types.FCurve]
 
+SKYNAME_SUFFIX = ["rt", "bk", "lf", "ft", "up", "dn"]
+MAX_SKY_TGA_RESOLUTION = (256 * 256) * 4
+
 class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportIncompatibleMethodOverride]
     bl_idname = "gsr.import_file"
     bl_label = "GoldSrc State Recording (.gsr)"
@@ -1666,6 +1676,49 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         self.bsp = Bsp(self.fs, map_file)
         self.face_mesh_map = self.bsp.generate_face_mesh_map()
 
+        self.lightstyle_id_map: dict[int, list[tuple[bpy.types.FCurve, float | None]]] = defaultdict(list)
+        for light in bpy.data.lights:
+            if light.type != "POINT":
+                continue
+            light: bpy.types.PointLight
+
+            light_style = light.get("light_style")
+            if light_style is None:
+                print('skipping light beacuse not light_style')
+                continue
+
+            light["light_style_value"] = 1.0
+
+            light_anim_data = light.animation_data_create()
+            light_action: bpy.types.Action = bpy.data.actions.new(name=f"{light.name}_Action")
+            light_slot: bpy.types.ActionSlot = light_action.slots.new(id_type="LIGHT", name=light.name)
+            light_anim_data.action = light_action
+            light_anim_data.action_slot = light_slot
+            light_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(light_action, light_slot) # type: ignore
+
+            light_fcurve: bpy.types.FCurve = light_cb.fcurves.new('["light_style_value"]')
+
+            energy_driver: bpy.types.Driver = light.driver_add("energy").driver # type: ignore
+            energy_driver.type = "SCRIPTED"
+
+            intensity_driver_var = energy_driver.variables.new()
+            intensity_driver_var.name = "intensity"
+            intensity_driver_var.type = "SINGLE_PROP"
+            intensity_driver_var.targets[0].id_type = "LIGHT"
+            intensity_driver_var.targets[0].id = light
+            intensity_driver_var.targets[0].data_path = '["intensity"]'
+
+            light_style_value_driver_var = energy_driver.variables.new()
+            light_style_value_driver_var.name = "light_style_value"
+            light_style_value_driver_var.type = "SINGLE_PROP"
+            light_style_value_driver_var.targets[0].id_type = "LIGHT"
+            light_style_value_driver_var.targets[0].id = light
+            light_style_value_driver_var.targets[0].data_path = '["light_style_value"]'
+
+            energy_driver.expression = "intensity * light_style_value"
+
+            self.lightstyle_id_map[light_style].append((light_fcurve, None))
+
         scene = bpy.context.scene
         assert scene is not None
         scene_anim_data = scene.animation_data_create()
@@ -1709,6 +1762,9 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         self.entities: dict[int, Entity] = {}
         self.beams: dict[int, Beam] = {}
         self.decals: dict[int, Decal] = {}
+        self.lightstyles: dict[int, str] = {}
+        self.skyname: Optional[str] = None
+        self.prev_skyname: Optional[str] = None
 
         self.frame = 1
         self.time = 0
@@ -1790,6 +1846,10 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                         self.parse_update_player()
                     case MessageType.UpdateDecals:
                         self.parse_update_decals(collection)
+                    case MessageType.UpdateLightstyles:
+                        self.parse_update_lightstyles()
+                    case MessageType.SetSkyname:
+                        self.parse_set_skyname()
                     case _:
                         raise Exception(f"unknown message type: {message_type}")
 
@@ -1821,6 +1881,72 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     continue
 
                 beam.beam_draw(self.frame, self.time, collection)
+
+            # R_AnimateLight
+            for (index, map) in self.lightstyles.items():
+                if not self.lightstyle_id_map.get(index):
+                    continue
+
+                k = animation_time % len(map)
+                char = map[k]
+                value = (ord(char) - ord('a')) / 12.0 # normalize to blender scale (m = 1.0)
+
+                for i, (fcurve, prev_value) in enumerate(self.lightstyle_id_map[index]):
+                    if value != prev_value:
+                        fcurve.keyframe_points.insert(self.frame, value)
+                        self.lightstyle_id_map[index][i] = (fcurve, value)
+
+            # R_LoadSkys
+            if self.skyname != self.prev_skyname:
+                images: list[Optional[bpy.types.Image]] = []
+                skyname = self.skyname
+
+                for i, suffix in enumerate(SKYNAME_SUFFIX):
+                    path = f"gfx/env/{self.skyname}{suffix}.tga"
+                    file = self.fs.open(path, "rb")
+                    if file is None:
+                        print(f"Couldn't load {path}")
+
+                        if i == 0 and skyname != "desert":
+                            skyname = "desert"
+                            suffix = SKYNAME_SUFFIX[0]
+                            path = f"gfx/env/{skyname}{suffix}.tga"
+                            file = self.fs.open(path, "rb")
+
+                        if file is None:
+                            images.append(None)
+                            continue
+
+                    tga = Tga.load(file, MAX_SKY_TGA_RESOLUTION)
+
+                    if tga is None:
+                        images.append(None)
+                        continue
+
+                    # we should probably check this earlier but... this probably runs once only anyway
+                    if path in bpy.data.images:
+                        image = bpy.data.images[path]
+                    else:
+                        image = bpy.data.images.new(path, tga.width, tga.height)
+                        pixels = [c / 255 for c in tga.pixels]
+                        row_size = tga.width * 4
+                        pixels = [v for row in range(tga.height - 1, -1, -1) for v in pixels[row * row_size:(row + 1) * row_size]]
+                        image.pixels = pixels
+                        image.pack()
+
+                    images.append(image)
+
+                # FIXME: remove if it's always true :)
+                assert len(images) == 6
+
+                sky_material: Optional[bpy.types.Material] = bpy.data.materials.get("sky")
+                if sky_material is not None:
+                    node_tree = sky_material.node_tree
+                    assert node_tree is not None
+                    node_tree.nodes.clear()
+                    gsr_nodes.setup_sky_nodes(node_tree, *images)
+
+                self.prev_skyname = self.skyname
 
             self.frame += 1
             wm.progress_update(self.br.tell())
@@ -2065,3 +2191,16 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                 object=decal_obj,
                 fcurves=fcurves,
             )
+
+    def parse_update_lightstyles(self):
+        lightstyle_count = self.br.u8()
+        for _ in range(lightstyle_count):
+            index = self.br.u8()
+            map_length = self.br.u8()
+            map = self.br.fixed_string(map_length)
+            self.lightstyles[index] = map
+
+    def parse_set_skyname(self):
+        skyname_length = self.br.u8()
+        skyname = self.br.fixed_string(skyname_length)
+        self.skyname = skyname

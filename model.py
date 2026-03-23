@@ -44,7 +44,7 @@ class CachedModel():
     @property
     def mdl(self) -> Mdl:
         if self._mdl is None:
-            self._mdl = Mdl.from_file(self.file)
+            self._mdl = Mdl.from_file(self.file, self.fs)
 
         return self._mdl
 

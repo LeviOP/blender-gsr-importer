@@ -2228,7 +2228,7 @@ def ensure_group(name: str):
 
     return builder()
 
-def new(nodes, name: str):
+def new(nodes, name: str) -> bpy.types.ShaderNodeGroup:
     group = ensure_group(name)
 
     group_node = nodes.new("ShaderNodeGroup")
@@ -3632,4 +3632,1266 @@ def setup_anim_bsp_nodes(nodes, links, image, main_frame_count, alt_frame_count)
     links.new(
         animated_texture.outputs[0],
         nodes["Image Texture"].inputs[0]
+    )
+
+# params matching skyname suffixes
+def setup_sky_nodes(shader_nodetree, rt, bk, lf, ft, up, dn):
+    # Node Texture Coordinate.001
+    texture_coordinate_001 = shader_nodetree.nodes.new("ShaderNodeTexCoord")
+    texture_coordinate_001.name = "Texture Coordinate.001"
+    texture_coordinate_001.from_instancer = False
+
+    # Node Vector Transform.001
+    vector_transform_001 = shader_nodetree.nodes.new("ShaderNodeVectorTransform")
+    vector_transform_001.name = "Vector Transform.001"
+    vector_transform_001.convert_from = 'CAMERA'
+    vector_transform_001.convert_to = 'WORLD'
+    vector_transform_001.vector_type = 'VECTOR'
+
+    # Node Combine XYZ.004
+    combine_xyz_004 = shader_nodetree.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz_004.name = "Combine XYZ.004"
+    # Z
+    combine_xyz_004.inputs[2].default_value = 0.0
+
+    # Node Vector Math.017
+    vector_math_017 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_017.name = "Vector Math.017"
+    vector_math_017.operation = 'MULTIPLY'
+
+    # Node Math.007
+    math_007 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_007.name = "Math.007"
+    math_007.operation = 'DIVIDE'
+    math_007.use_clamp = False
+    # Value
+    math_007.inputs[0].default_value = 1.0
+
+    # Node Math.035
+    math_035 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_035.name = "Math.035"
+    math_035.operation = 'MULTIPLY'
+    math_035.use_clamp = False
+    # Value_001
+    math_035.inputs[1].default_value = -1.0
+
+    # Node Math.036
+    math_036 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_036.name = "Math.036"
+    math_036.operation = 'MULTIPLY'
+    math_036.use_clamp = False
+    # Value_001
+    math_036.inputs[1].default_value = 1.0
+
+    # Node Image Texture.015
+    image_texture_015 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_015.name = "Image Texture.015"
+    image_texture_015.extension = 'CLIP'
+    image_texture_015.image = up
+    image_texture_015.image_user.frame_current = 0
+    image_texture_015.image_user.frame_duration = 1
+    image_texture_015.image_user.frame_offset = -1
+    image_texture_015.image_user.frame_start = 1
+    image_texture_015.image_user.tile = 0
+    image_texture_015.image_user.use_auto_refresh = False
+    image_texture_015.image_user.use_cyclic = False
+    image_texture_015.interpolation = 'Linear'
+    image_texture_015.projection = 'FLAT'
+    image_texture_015.projection_blend = 1.0
+
+    # Node Material Output.002
+    material_output_002 = shader_nodetree.nodes.new("ShaderNodeOutputMaterial")
+    material_output_002.name = "Material Output.002"
+    material_output_002.is_active_output = True
+    material_output_002.target = 'ALL'
+    # Displacement
+    material_output_002.inputs[2].default_value = (0.0, 0.0, 0.0)
+    # Thickness
+    material_output_002.inputs[3].default_value = 0.0
+
+    # Node Emission.002
+    emission_002 = shader_nodetree.nodes.new("ShaderNodeEmission")
+    emission_002.name = "Emission.002"
+    # Strength
+    emission_002.inputs[1].default_value = 1.0
+
+    # Node Vector Math.014
+    vector_math_014 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_014.name = "Vector Math.014"
+    vector_math_014.operation = 'ADD'
+    # Vector_001
+    vector_math_014.inputs[1].default_value = (-1.0, 1.0, 0.0)
+
+    # Node Vector Math.015
+    vector_math_015 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_015.name = "Vector Math.015"
+    vector_math_015.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_015.inputs[1].default_value = (-2.0, 2.0, 1.0)
+
+    # Node Math.042
+    math_042 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_042.name = "Math.042"
+    math_042.operation = 'LESS_THAN'
+    math_042.use_clamp = False
+    # Value_001
+    math_042.inputs[1].default_value = 0.0
+
+    # Node Image Texture.016
+    image_texture_016 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_016.name = "Image Texture.016"
+    image_texture_016.extension = 'CLIP'
+    image_texture_016.image = dn
+    image_texture_016.image_user.frame_current = 0
+    image_texture_016.image_user.frame_duration = 1
+    image_texture_016.image_user.frame_offset = -1
+    image_texture_016.image_user.frame_start = 1
+    image_texture_016.image_user.tile = 0
+    image_texture_016.image_user.use_auto_refresh = False
+    image_texture_016.image_user.use_cyclic = False
+    image_texture_016.interpolation = 'Linear'
+    image_texture_016.projection = 'FLAT'
+    image_texture_016.projection_blend = 1.0
+
+    # Node Mix.001
+    mix_001 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_001.name = "Mix.001"
+    mix_001.blend_type = 'LIGHTEN'
+    mix_001.clamp_factor = False
+    mix_001.clamp_result = False
+    mix_001.data_type = 'RGBA'
+    mix_001.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_001.inputs[0].default_value = 1.0
+
+    # Node Vector Math.019
+    vector_math_019 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_019.name = "Vector Math.019"
+    vector_math_019.operation = 'ADD'
+    # Vector_001
+    vector_math_019.inputs[1].default_value = (1.0, 1.0, 0.0)
+
+    # Node Vector Math.023
+    vector_math_023 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_023.name = "Vector Math.023"
+    vector_math_023.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_023.inputs[1].default_value = (2.0, 2.0, 1.0)
+
+    # Node Math.043
+    math_043 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_043.name = "Math.043"
+    math_043.operation = 'GREATER_THAN'
+    math_043.use_clamp = False
+    # Value_001
+    math_043.inputs[1].default_value = 0.0
+
+    # Node Separate XYZ.001
+    separate_xyz_001 = shader_nodetree.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz_001.name = "Separate XYZ.001"
+
+    # Node Combine XYZ.006
+    combine_xyz_006 = shader_nodetree.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz_006.name = "Combine XYZ.006"
+    # Z
+    combine_xyz_006.inputs[2].default_value = 0.0
+
+    # Node Vector Math.025
+    vector_math_025 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_025.name = "Vector Math.025"
+    vector_math_025.operation = 'MULTIPLY'
+
+    # Node Math.044
+    math_044 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_044.name = "Math.044"
+    math_044.operation = 'DIVIDE'
+    math_044.use_clamp = False
+    # Value
+    math_044.inputs[0].default_value = 1.0
+
+    # Node Math.045
+    math_045 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_045.name = "Math.045"
+    math_045.operation = 'MULTIPLY'
+    math_045.use_clamp = False
+    # Value_001
+    math_045.inputs[1].default_value = 1.0
+
+    # Node Math.046
+    math_046 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_046.name = "Math.046"
+    math_046.operation = 'MULTIPLY'
+    math_046.use_clamp = False
+    # Value_001
+    math_046.inputs[1].default_value = 1.0
+
+    # Node Image Texture.017
+    image_texture_017 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_017.name = "Image Texture.017"
+    image_texture_017.extension = 'CLIP'
+    image_texture_017.image = bk
+    image_texture_017.image_user.frame_current = 0
+    image_texture_017.image_user.frame_duration = 1
+    image_texture_017.image_user.frame_offset = -1
+    image_texture_017.image_user.frame_start = 1
+    image_texture_017.image_user.tile = 0
+    image_texture_017.image_user.use_auto_refresh = False
+    image_texture_017.image_user.use_cyclic = False
+    image_texture_017.interpolation = 'Linear'
+    image_texture_017.projection = 'FLAT'
+    image_texture_017.projection_blend = 1.0
+
+    # Node Vector Math.026
+    vector_math_026 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_026.name = "Vector Math.026"
+    vector_math_026.operation = 'ADD'
+    # Vector_001
+    vector_math_026.inputs[1].default_value = (1.0, 1.0, 0.0)
+
+    # Node Vector Math.027
+    vector_math_027 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_027.name = "Vector Math.027"
+    vector_math_027.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_027.inputs[1].default_value = (2.0, 2.0, 1.0)
+
+    # Node Math.047
+    math_047 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_047.name = "Math.047"
+    math_047.operation = 'LESS_THAN'
+    math_047.use_clamp = False
+    # Value_001
+    math_047.inputs[1].default_value = 0.0
+
+    # Node Image Texture.018
+    image_texture_018 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_018.name = "Image Texture.018"
+    image_texture_018.extension = 'CLIP'
+    image_texture_018.image = ft
+    image_texture_018.image_user.frame_current = 0
+    image_texture_018.image_user.frame_duration = 1
+    image_texture_018.image_user.frame_offset = -1
+    image_texture_018.image_user.frame_start = 1
+    image_texture_018.image_user.tile = 0
+    image_texture_018.image_user.use_auto_refresh = False
+    image_texture_018.image_user.use_cyclic = False
+    image_texture_018.interpolation = 'Linear'
+    image_texture_018.projection = 'FLAT'
+    image_texture_018.projection_blend = 1.0
+
+    # Node Mix.002
+    mix_002 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_002.name = "Mix.002"
+    mix_002.blend_type = 'LIGHTEN'
+    mix_002.clamp_factor = True
+    mix_002.clamp_result = False
+    mix_002.data_type = 'RGBA'
+    mix_002.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_002.inputs[0].default_value = 1.0
+
+    # Node Vector Math.028
+    vector_math_028 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_028.name = "Vector Math.028"
+    vector_math_028.operation = 'ADD'
+    # Vector_001
+    vector_math_028.inputs[1].default_value = (1.0, -1.0, 0.0)
+
+    # Node Vector Math.029
+    vector_math_029 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_029.name = "Vector Math.029"
+    vector_math_029.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_029.inputs[1].default_value = (2.0, -2.0, 1.0)
+
+    # Node Math.048
+    math_048 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_048.name = "Math.048"
+    math_048.operation = 'GREATER_THAN'
+    math_048.use_clamp = False
+    # Value_001
+    math_048.inputs[1].default_value = 0.0
+
+    # Node Combine XYZ.010
+    combine_xyz_010 = shader_nodetree.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz_010.name = "Combine XYZ.010"
+    # Z
+    combine_xyz_010.inputs[2].default_value = 0.0
+
+    # Node Vector Math.032
+    vector_math_032 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_032.name = "Vector Math.032"
+    vector_math_032.operation = 'MULTIPLY'
+
+    # Node Math.049
+    math_049 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_049.name = "Math.049"
+    math_049.operation = 'DIVIDE'
+    math_049.use_clamp = False
+    # Value
+    math_049.inputs[0].default_value = 1.0
+
+    # Node Math.050
+    math_050 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_050.name = "Math.050"
+    math_050.operation = 'MULTIPLY'
+    math_050.use_clamp = False
+    # Value_001
+    math_050.inputs[1].default_value = 1.0
+
+    # Node Math.051
+    math_051 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_051.name = "Math.051"
+    math_051.operation = 'MULTIPLY'
+    math_051.use_clamp = False
+    # Value_001
+    math_051.inputs[1].default_value = 1.0
+
+    # Node Image Texture.019
+    image_texture_019 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_019.name = "Image Texture.019"
+    image_texture_019.extension = 'CLIP'
+    image_texture_019.image = rt
+    image_texture_019.image_user.frame_current = 0
+    image_texture_019.image_user.frame_duration = 1
+    image_texture_019.image_user.frame_offset = -1
+    image_texture_019.image_user.frame_start = 1
+    image_texture_019.image_user.tile = 0
+    image_texture_019.image_user.use_auto_refresh = False
+    image_texture_019.image_user.use_cyclic = False
+    image_texture_019.interpolation = 'Linear'
+    image_texture_019.projection = 'FLAT'
+    image_texture_019.projection_blend = 1.0
+
+    # Node Vector Math.033
+    vector_math_033 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_033.name = "Vector Math.033"
+    vector_math_033.operation = 'ADD'
+    # Vector_001
+    vector_math_033.inputs[1].default_value = (-1.0, 1.0, 0.0)
+
+    # Node Vector Math.034
+    vector_math_034 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_034.name = "Vector Math.034"
+    vector_math_034.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_034.inputs[1].default_value = (-2.0, 2.0, 1.0)
+
+    # Node Math.052
+    math_052 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_052.name = "Math.052"
+    math_052.operation = 'LESS_THAN'
+    math_052.use_clamp = False
+    # Value_001
+    math_052.inputs[1].default_value = 0.0
+
+    # Node Image Texture.020
+    image_texture_020 = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture_020.name = "Image Texture.020"
+    image_texture_020.extension = 'CLIP'
+    image_texture_020.image = lf
+    image_texture_020.image_user.frame_current = 0
+    image_texture_020.image_user.frame_duration = 1
+    image_texture_020.image_user.frame_offset = -1
+    image_texture_020.image_user.frame_start = 1
+    image_texture_020.image_user.tile = 0
+    image_texture_020.image_user.use_auto_refresh = False
+    image_texture_020.image_user.use_cyclic = False
+    image_texture_020.interpolation = 'Linear'
+    image_texture_020.projection = 'FLAT'
+    image_texture_020.projection_blend = 1.0
+
+    # Node Mix.004
+    mix_004 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_004.name = "Mix.004"
+    mix_004.blend_type = 'LIGHTEN'
+    mix_004.clamp_factor = True
+    mix_004.clamp_result = False
+    mix_004.data_type = 'RGBA'
+    mix_004.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_004.inputs[0].default_value = 1.0
+
+    # Node Vector Math.035
+    vector_math_035 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_035.name = "Vector Math.035"
+    vector_math_035.operation = 'ADD'
+    # Vector_001
+    vector_math_035.inputs[1].default_value = (-1.0, -1.0, 0.0)
+
+    # Node Vector Math.036
+    vector_math_036 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_036.name = "Vector Math.036"
+    vector_math_036.operation = 'DIVIDE'
+    # Vector_001
+    vector_math_036.inputs[1].default_value = (-2.0, -2.0, 1.0)
+
+    # Node Math.053
+    math_053 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_053.name = "Math.053"
+    math_053.operation = 'GREATER_THAN'
+    math_053.use_clamp = False
+    # Value_001
+    math_053.inputs[1].default_value = 0.0
+
+    # Node Mix
+    mix = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'LIGHTEN'
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix.inputs[0].default_value = 1.0
+
+    # Node Mix.003
+    mix_003 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_003.name = "Mix.003"
+    mix_003.blend_type = 'LIGHTEN'
+    mix_003.clamp_factor = True
+    mix_003.clamp_result = False
+    mix_003.data_type = 'RGBA'
+    mix_003.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_003.inputs[0].default_value = 1.0
+
+    # Node Mix.005
+    mix_005 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_005.name = "Mix.005"
+    mix_005.blend_type = 'MULTIPLY'
+    mix_005.clamp_factor = False
+    mix_005.clamp_result = False
+    mix_005.data_type = 'RGBA'
+    mix_005.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_005.inputs[0].default_value = 1.0
+
+    # Node Mix.006
+    mix_006 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_006.name = "Mix.006"
+    mix_006.blend_type = 'MULTIPLY'
+    mix_006.clamp_factor = False
+    mix_006.clamp_result = False
+    mix_006.data_type = 'RGBA'
+    mix_006.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_006.inputs[0].default_value = 1.0
+
+    # Node Mix.007
+    mix_007 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_007.name = "Mix.007"
+    mix_007.blend_type = 'MULTIPLY'
+    mix_007.clamp_factor = False
+    mix_007.clamp_result = False
+    mix_007.data_type = 'RGBA'
+    mix_007.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_007.inputs[0].default_value = 1.0
+
+    # Node Mix.008
+    mix_008 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_008.name = "Mix.008"
+    mix_008.blend_type = 'MULTIPLY'
+    mix_008.clamp_factor = False
+    mix_008.clamp_result = False
+    mix_008.data_type = 'RGBA'
+    mix_008.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_008.inputs[0].default_value = 1.0
+
+    # Node Mix.009
+    mix_009 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_009.name = "Mix.009"
+    mix_009.blend_type = 'MULTIPLY'
+    mix_009.clamp_factor = False
+    mix_009.clamp_result = False
+    mix_009.data_type = 'RGBA'
+    mix_009.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_009.inputs[0].default_value = 1.0
+
+    # Node Mix.010
+    mix_010 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_010.name = "Mix.010"
+    mix_010.blend_type = 'MULTIPLY'
+    mix_010.clamp_factor = False
+    mix_010.clamp_result = False
+    mix_010.data_type = 'RGBA'
+    mix_010.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix_010.inputs[0].default_value = 1.0
+
+    # Node Vector Math
+    vector_math = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math.name = "Vector Math"
+    vector_math.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.001
+    vector_math_001 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_001.name = "Vector Math.001"
+    vector_math_001.operation = 'ADD'
+    # Vector_001
+    vector_math_001.inputs[1].default_value = (0.001953125, 0.001953125, 0.0)
+
+    # Node Vector Math.002
+    vector_math_002 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_002.name = "Vector Math.002"
+    vector_math_002.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math_002.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.003
+    vector_math_003 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_003.name = "Vector Math.003"
+    vector_math_003.operation = 'ADD'
+    # Vector_001
+    vector_math_003.inputs[1].default_value = (0.0019529999699443579, 0.001953125, 0.0)
+
+    # Node Vector Math.004
+    vector_math_004 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_004.name = "Vector Math.004"
+    vector_math_004.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math_004.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.005
+    vector_math_005 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_005.name = "Vector Math.005"
+    vector_math_005.operation = 'ADD'
+    # Vector_001
+    vector_math_005.inputs[1].default_value = (0.001953125, 0.001953125, 0.0)
+
+    # Node Vector Math.006
+    vector_math_006 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_006.name = "Vector Math.006"
+    vector_math_006.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math_006.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.007
+    vector_math_007 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_007.name = "Vector Math.007"
+    vector_math_007.operation = 'ADD'
+    # Vector_001
+    vector_math_007.inputs[1].default_value = (0.001953125, 0.001953125, 0.0)
+
+    # Node Vector Math.008
+    vector_math_008 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_008.name = "Vector Math.008"
+    vector_math_008.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math_008.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.009
+    vector_math_009 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_009.name = "Vector Math.009"
+    vector_math_009.operation = 'ADD'
+    # Vector_001
+    vector_math_009.inputs[1].default_value = (0.001953125, 0.001953125, 0.0)
+
+    # Node Vector Math.010
+    vector_math_010 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_010.name = "Vector Math.010"
+    vector_math_010.operation = 'MULTIPLY'
+    # Vector_001
+    vector_math_010.inputs[1].default_value = (0.99609375, 0.99609375, 0.0)
+
+    # Node Vector Math.011
+    vector_math_011 = shader_nodetree.nodes.new("ShaderNodeVectorMath")
+    vector_math_011.name = "Vector Math.011"
+    vector_math_011.operation = 'ADD'
+    # Vector_001
+    vector_math_011.inputs[1].default_value = (0.001953125, 0.001953125, 0.0)
+
+    # Set locations
+    shader_nodetree.nodes["Texture Coordinate.001"].location = (-2500.0, 0.0)
+    shader_nodetree.nodes["Vector Transform.001"].location = (-2340.0, 0.0)
+    shader_nodetree.nodes["Combine XYZ.004"].location = (-1640.0, 560.0)
+    shader_nodetree.nodes["Vector Math.017"].location = (-1480.0, 560.0)
+    shader_nodetree.nodes["Math.007"].location = (-1640.0, 420.0)
+    shader_nodetree.nodes["Math.035"].location = (-1800.0, 560.0)
+    shader_nodetree.nodes["Math.036"].location = (-1960.0, 560.0)
+    shader_nodetree.nodes["Image Texture.015"].location = (-680.0, 840.0)
+    shader_nodetree.nodes["Material Output.002"].location = (540.0, 20.0)
+    shader_nodetree.nodes["Emission.002"].location = (380.0, 20.0)
+    shader_nodetree.nodes["Vector Math.014"].location = (-1320.0, 760.0)
+    shader_nodetree.nodes["Vector Math.015"].location = (-1160.0, 760.0)
+    shader_nodetree.nodes["Math.042"].location = (-420.0, 440.0)
+    shader_nodetree.nodes["Image Texture.016"].location = (-680.0, 560.0)
+    shader_nodetree.nodes["Mix.001"].location = (-100.0, 560.0)
+    shader_nodetree.nodes["Vector Math.019"].location = (-1320.0, 560.0)
+    shader_nodetree.nodes["Vector Math.023"].location = (-1160.0, 560.0)
+    shader_nodetree.nodes["Math.043"].location = (-420.0, 720.0)
+    shader_nodetree.nodes["Separate XYZ.001"].location = (-2180.0, 0.0)
+    shader_nodetree.nodes["Combine XYZ.006"].location = (-1640.0, 0.0)
+    shader_nodetree.nodes["Vector Math.025"].location = (-1480.0, 0.0)
+    shader_nodetree.nodes["Math.044"].location = (-1640.0, -140.0)
+    shader_nodetree.nodes["Math.045"].location = (-1800.0, 0.0)
+    shader_nodetree.nodes["Math.046"].location = (-1960.0, 0.0)
+    shader_nodetree.nodes["Image Texture.017"].location = (-680.0, 280.0)
+    shader_nodetree.nodes["Vector Math.026"].location = (-1320.0, 200.0)
+    shader_nodetree.nodes["Vector Math.027"].location = (-1160.0, 200.0)
+    shader_nodetree.nodes["Math.047"].location = (-420.0, -120.0)
+    shader_nodetree.nodes["Image Texture.018"].location = (-680.0, 0.0)
+    shader_nodetree.nodes["Mix.002"].location = (-100.0, 140.0)
+    shader_nodetree.nodes["Vector Math.028"].location = (-1320.0, 0.0)
+    shader_nodetree.nodes["Vector Math.029"].location = (-1160.0, 0.0)
+    shader_nodetree.nodes["Math.048"].location = (-420.0, 160.0)
+    shader_nodetree.nodes["Combine XYZ.010"].location = (-1640.0, -560.0)
+    shader_nodetree.nodes["Vector Math.032"].location = (-1480.0, -560.0)
+    shader_nodetree.nodes["Math.049"].location = (-1640.0, -700.0)
+    shader_nodetree.nodes["Math.050"].location = (-1800.0, -560.0)
+    shader_nodetree.nodes["Math.051"].location = (-1960.0, -560.0)
+    shader_nodetree.nodes["Image Texture.019"].location = (-680.0, -280.0)
+    shader_nodetree.nodes["Vector Math.033"].location = (-1320.0, -360.0)
+    shader_nodetree.nodes["Vector Math.034"].location = (-1160.0, -360.0)
+    shader_nodetree.nodes["Math.052"].location = (-420.0, -680.0)
+    shader_nodetree.nodes["Image Texture.020"].location = (-680.0, -560.0)
+    shader_nodetree.nodes["Mix.004"].location = (-100.0, -280.0)
+    shader_nodetree.nodes["Vector Math.035"].location = (-1320.0, -560.0)
+    shader_nodetree.nodes["Vector Math.036"].location = (-1160.0, -560.0)
+    shader_nodetree.nodes["Math.053"].location = (-420.0, -400.0)
+    shader_nodetree.nodes["Mix"].location = (220.0, 20.0)
+    shader_nodetree.nodes["Mix.003"].location = (60.0, -160.0)
+    shader_nodetree.nodes["Mix.005"].location = (-260.0, 840.0)
+    shader_nodetree.nodes["Mix.006"].location = (-260.0, 560.0)
+    shader_nodetree.nodes["Mix.007"].location = (-260.0, 280.0)
+    shader_nodetree.nodes["Mix.008"].location = (-260.0, 0.0)
+    shader_nodetree.nodes["Mix.009"].location = (-260.0, -280.0)
+    shader_nodetree.nodes["Mix.010"].location = (-260.0, -560.0)
+    shader_nodetree.nodes["Vector Math"].location = (-1000.0, 760.0)
+    shader_nodetree.nodes["Vector Math.001"].location = (-840.0, 760.0)
+    shader_nodetree.nodes["Vector Math.002"].location = (-1000.0, 560.0)
+    shader_nodetree.nodes["Vector Math.003"].location = (-840.0, 560.0)
+    shader_nodetree.nodes["Vector Math.004"].location = (-1000.0, 200.0)
+    shader_nodetree.nodes["Vector Math.005"].location = (-840.0, 200.0)
+    shader_nodetree.nodes["Vector Math.006"].location = (-1000.0, 0.0)
+    shader_nodetree.nodes["Vector Math.007"].location = (-840.0, 0.0)
+    shader_nodetree.nodes["Vector Math.008"].location = (-1000.0, -360.0)
+    shader_nodetree.nodes["Vector Math.009"].location = (-840.0, -360.0)
+    shader_nodetree.nodes["Vector Math.010"].location = (-1000.0, -560.0)
+    shader_nodetree.nodes["Vector Math.011"].location = (-840.0, -560.0)
+
+    # Set dimensions
+    shader_nodetree.nodes["Texture Coordinate.001"].width  = 140.0
+    shader_nodetree.nodes["Texture Coordinate.001"].height = 100.0
+
+    shader_nodetree.nodes["Vector Transform.001"].width  = 140.0
+    shader_nodetree.nodes["Vector Transform.001"].height = 100.0
+
+    shader_nodetree.nodes["Combine XYZ.004"].width  = 140.0
+    shader_nodetree.nodes["Combine XYZ.004"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.017"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.017"].height = 100.0
+
+    shader_nodetree.nodes["Math.007"].width  = 140.0
+    shader_nodetree.nodes["Math.007"].height = 100.0
+
+    shader_nodetree.nodes["Math.035"].width  = 140.0
+    shader_nodetree.nodes["Math.035"].height = 100.0
+
+    shader_nodetree.nodes["Math.036"].width  = 140.0
+    shader_nodetree.nodes["Math.036"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.015"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.015"].height = 100.0
+
+    shader_nodetree.nodes["Material Output.002"].width  = 140.0
+    shader_nodetree.nodes["Material Output.002"].height = 100.0
+
+    shader_nodetree.nodes["Emission.002"].width  = 140.0
+    shader_nodetree.nodes["Emission.002"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.014"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.014"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.015"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.015"].height = 100.0
+
+    shader_nodetree.nodes["Math.042"].width  = 140.0
+    shader_nodetree.nodes["Math.042"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.016"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.016"].height = 100.0
+
+    shader_nodetree.nodes["Mix.001"].width  = 140.0
+    shader_nodetree.nodes["Mix.001"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.019"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.019"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.023"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.023"].height = 100.0
+
+    shader_nodetree.nodes["Math.043"].width  = 140.0
+    shader_nodetree.nodes["Math.043"].height = 100.0
+
+    shader_nodetree.nodes["Separate XYZ.001"].width  = 140.0
+    shader_nodetree.nodes["Separate XYZ.001"].height = 100.0
+
+    shader_nodetree.nodes["Combine XYZ.006"].width  = 140.0
+    shader_nodetree.nodes["Combine XYZ.006"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.025"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.025"].height = 100.0
+
+    shader_nodetree.nodes["Math.044"].width  = 140.0
+    shader_nodetree.nodes["Math.044"].height = 100.0
+
+    shader_nodetree.nodes["Math.045"].width  = 140.0
+    shader_nodetree.nodes["Math.045"].height = 100.0
+
+    shader_nodetree.nodes["Math.046"].width  = 140.0
+    shader_nodetree.nodes["Math.046"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.017"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.017"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.026"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.026"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.027"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.027"].height = 100.0
+
+    shader_nodetree.nodes["Math.047"].width  = 140.0
+    shader_nodetree.nodes["Math.047"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.018"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.018"].height = 100.0
+
+    shader_nodetree.nodes["Mix.002"].width  = 140.0
+    shader_nodetree.nodes["Mix.002"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.028"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.028"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.029"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.029"].height = 100.0
+
+    shader_nodetree.nodes["Math.048"].width  = 140.0
+    shader_nodetree.nodes["Math.048"].height = 100.0
+
+    shader_nodetree.nodes["Combine XYZ.010"].width  = 140.0
+    shader_nodetree.nodes["Combine XYZ.010"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.032"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.032"].height = 100.0
+
+    shader_nodetree.nodes["Math.049"].width  = 140.0
+    shader_nodetree.nodes["Math.049"].height = 100.0
+
+    shader_nodetree.nodes["Math.050"].width  = 140.0
+    shader_nodetree.nodes["Math.050"].height = 100.0
+
+    shader_nodetree.nodes["Math.051"].width  = 140.0
+    shader_nodetree.nodes["Math.051"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.019"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.019"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.033"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.033"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.034"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.034"].height = 100.0
+
+    shader_nodetree.nodes["Math.052"].width  = 140.0
+    shader_nodetree.nodes["Math.052"].height = 100.0
+
+    shader_nodetree.nodes["Image Texture.020"].width  = 240.0
+    shader_nodetree.nodes["Image Texture.020"].height = 100.0
+
+    shader_nodetree.nodes["Mix.004"].width  = 140.0
+    shader_nodetree.nodes["Mix.004"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.035"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.035"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.036"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.036"].height = 100.0
+
+    shader_nodetree.nodes["Math.053"].width  = 140.0
+    shader_nodetree.nodes["Math.053"].height = 100.0
+
+    shader_nodetree.nodes["Mix"].width  = 140.0
+    shader_nodetree.nodes["Mix"].height = 100.0
+
+    shader_nodetree.nodes["Mix.003"].width  = 140.0
+    shader_nodetree.nodes["Mix.003"].height = 100.0
+
+    shader_nodetree.nodes["Mix.005"].width  = 140.0
+    shader_nodetree.nodes["Mix.005"].height = 100.0
+
+    shader_nodetree.nodes["Mix.006"].width  = 140.0
+    shader_nodetree.nodes["Mix.006"].height = 100.0
+
+    shader_nodetree.nodes["Mix.007"].width  = 140.0
+    shader_nodetree.nodes["Mix.007"].height = 100.0
+
+    shader_nodetree.nodes["Mix.008"].width  = 140.0
+    shader_nodetree.nodes["Mix.008"].height = 100.0
+
+    shader_nodetree.nodes["Mix.009"].width  = 140.0
+    shader_nodetree.nodes["Mix.009"].height = 100.0
+
+    shader_nodetree.nodes["Mix.010"].width  = 140.0
+    shader_nodetree.nodes["Mix.010"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math"].width  = 140.0
+    shader_nodetree.nodes["Vector Math"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.001"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.001"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.002"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.002"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.003"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.003"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.004"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.004"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.005"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.005"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.006"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.006"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.007"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.007"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.008"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.008"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.009"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.009"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.010"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.010"].height = 100.0
+
+    shader_nodetree.nodes["Vector Math.011"].width  = 140.0
+    shader_nodetree.nodes["Vector Math.011"].height = 100.0
+
+
+    # Initialize shader_nodetree links
+
+    # texture_coordinate_001.Camera -> vector_transform_001.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Texture Coordinate.001"].outputs[4],
+        shader_nodetree.nodes["Vector Transform.001"].inputs[0]
+    )
+    # combine_xyz_004.Vector -> vector_math_017.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Combine XYZ.004"].outputs[0],
+        shader_nodetree.nodes["Vector Math.017"].inputs[0]
+    )
+    # math_007.Value -> vector_math_017.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.007"].outputs[0],
+        shader_nodetree.nodes["Vector Math.017"].inputs[1]
+    )
+    # math_035.Value -> combine_xyz_004.Y
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.035"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.004"].inputs[1]
+    )
+    # math_036.Value -> combine_xyz_004.X
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.036"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.004"].inputs[0]
+    )
+    # emission_002.Emission -> material_output_002.Surface
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Emission.002"].outputs[0],
+        shader_nodetree.nodes["Material Output.002"].inputs[0]
+    )
+    # vector_math_014.Vector -> vector_math_015.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.014"].outputs[0],
+        shader_nodetree.nodes["Vector Math.015"].inputs[0]
+    )
+    # vector_math_017.Vector -> vector_math_014.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.017"].outputs[0],
+        shader_nodetree.nodes["Vector Math.014"].inputs[0]
+    )
+    # mix_006.Result -> mix_001.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.006"].outputs[2],
+        shader_nodetree.nodes["Mix.001"].inputs[7]
+    )
+    # vector_math_019.Vector -> vector_math_023.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.019"].outputs[0],
+        shader_nodetree.nodes["Vector Math.023"].inputs[0]
+    )
+    # vector_math_017.Vector -> vector_math_019.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.017"].outputs[0],
+        shader_nodetree.nodes["Vector Math.019"].inputs[0]
+    )
+    # vector_transform_001.Vector -> separate_xyz_001.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Transform.001"].outputs[0],
+        shader_nodetree.nodes["Separate XYZ.001"].inputs[0]
+    )
+    # separate_xyz_001.Z -> math_007.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[2],
+        shader_nodetree.nodes["Math.007"].inputs[1]
+    )
+    # separate_xyz_001.Z -> math_042.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[2],
+        shader_nodetree.nodes["Math.042"].inputs[0]
+    )
+    # separate_xyz_001.Z -> math_043.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[2],
+        shader_nodetree.nodes["Math.043"].inputs[0]
+    )
+    # combine_xyz_006.Vector -> vector_math_025.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Combine XYZ.006"].outputs[0],
+        shader_nodetree.nodes["Vector Math.025"].inputs[0]
+    )
+    # math_044.Value -> vector_math_025.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.044"].outputs[0],
+        shader_nodetree.nodes["Vector Math.025"].inputs[1]
+    )
+    # math_045.Value -> combine_xyz_006.Y
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.045"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.006"].inputs[1]
+    )
+    # math_046.Value -> combine_xyz_006.X
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.046"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.006"].inputs[0]
+    )
+    # vector_math_026.Vector -> vector_math_027.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.026"].outputs[0],
+        shader_nodetree.nodes["Vector Math.027"].inputs[0]
+    )
+    # vector_math_025.Vector -> vector_math_026.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.025"].outputs[0],
+        shader_nodetree.nodes["Vector Math.026"].inputs[0]
+    )
+    # vector_math_028.Vector -> vector_math_029.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.028"].outputs[0],
+        shader_nodetree.nodes["Vector Math.029"].inputs[0]
+    )
+    # vector_math_025.Vector -> vector_math_028.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.025"].outputs[0],
+        shader_nodetree.nodes["Vector Math.028"].inputs[0]
+    )
+    # separate_xyz_001.X -> math_046.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[0],
+        shader_nodetree.nodes["Math.046"].inputs[0]
+    )
+    # separate_xyz_001.Y -> math_044.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[1],
+        shader_nodetree.nodes["Math.044"].inputs[1]
+    )
+    # separate_xyz_001.Y -> math_048.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[1],
+        shader_nodetree.nodes["Math.048"].inputs[0]
+    )
+    # separate_xyz_001.Y -> math_047.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[1],
+        shader_nodetree.nodes["Math.047"].inputs[0]
+    )
+    # separate_xyz_001.Z -> math_045.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[2],
+        shader_nodetree.nodes["Math.045"].inputs[0]
+    )
+    # combine_xyz_010.Vector -> vector_math_032.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Combine XYZ.010"].outputs[0],
+        shader_nodetree.nodes["Vector Math.032"].inputs[0]
+    )
+    # math_049.Value -> vector_math_032.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.049"].outputs[0],
+        shader_nodetree.nodes["Vector Math.032"].inputs[1]
+    )
+    # math_050.Value -> combine_xyz_010.Y
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.050"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.010"].inputs[1]
+    )
+    # math_051.Value -> combine_xyz_010.X
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.051"].outputs[0],
+        shader_nodetree.nodes["Combine XYZ.010"].inputs[0]
+    )
+    # vector_math_033.Vector -> vector_math_034.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.033"].outputs[0],
+        shader_nodetree.nodes["Vector Math.034"].inputs[0]
+    )
+    # vector_math_032.Vector -> vector_math_033.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.032"].outputs[0],
+        shader_nodetree.nodes["Vector Math.033"].inputs[0]
+    )
+    # vector_math_035.Vector -> vector_math_036.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.035"].outputs[0],
+        shader_nodetree.nodes["Vector Math.036"].inputs[0]
+    )
+    # vector_math_032.Vector -> vector_math_035.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.032"].outputs[0],
+        shader_nodetree.nodes["Vector Math.035"].inputs[0]
+    )
+    # separate_xyz_001.Y -> math_051.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[1],
+        shader_nodetree.nodes["Math.051"].inputs[0]
+    )
+    # separate_xyz_001.Z -> math_050.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[2],
+        shader_nodetree.nodes["Math.050"].inputs[0]
+    )
+    # separate_xyz_001.X -> math_049.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[0],
+        shader_nodetree.nodes["Math.049"].inputs[1]
+    )
+    # separate_xyz_001.X -> math_053.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[0],
+        shader_nodetree.nodes["Math.053"].inputs[0]
+    )
+    # separate_xyz_001.X -> math_052.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[0],
+        shader_nodetree.nodes["Math.052"].inputs[0]
+    )
+    # mix_001.Result -> mix.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.001"].outputs[2],
+        shader_nodetree.nodes["Mix"].inputs[6]
+    )
+    # mix_004.Result -> mix_003.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.004"].outputs[2],
+        shader_nodetree.nodes["Mix.003"].inputs[7]
+    )
+    # mix_003.Result -> mix.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.003"].outputs[2],
+        shader_nodetree.nodes["Mix"].inputs[7]
+    )
+    # mix_002.Result -> mix_003.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.002"].outputs[2],
+        shader_nodetree.nodes["Mix.003"].inputs[6]
+    )
+    # vector_math_001.Vector -> image_texture_015.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.001"].outputs[0],
+        shader_nodetree.nodes["Image Texture.015"].inputs[0]
+    )
+    # image_texture_015.Color -> mix_005.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.015"].outputs[0],
+        shader_nodetree.nodes["Mix.005"].inputs[6]
+    )
+    # mix_005.Result -> mix_001.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.005"].outputs[2],
+        shader_nodetree.nodes["Mix.001"].inputs[6]
+    )
+    # math_043.Value -> mix_005.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.043"].outputs[0],
+        shader_nodetree.nodes["Mix.005"].inputs[7]
+    )
+    # image_texture_016.Color -> mix_006.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.016"].outputs[0],
+        shader_nodetree.nodes["Mix.006"].inputs[6]
+    )
+    # math_042.Value -> mix_006.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.042"].outputs[0],
+        shader_nodetree.nodes["Mix.006"].inputs[7]
+    )
+    # image_texture_017.Color -> mix_007.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.017"].outputs[0],
+        shader_nodetree.nodes["Mix.007"].inputs[6]
+    )
+    # mix_007.Result -> mix_002.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.007"].outputs[2],
+        shader_nodetree.nodes["Mix.002"].inputs[6]
+    )
+    # image_texture_018.Color -> mix_008.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.018"].outputs[0],
+        shader_nodetree.nodes["Mix.008"].inputs[6]
+    )
+    # mix_008.Result -> mix_002.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.008"].outputs[2],
+        shader_nodetree.nodes["Mix.002"].inputs[7]
+    )
+    # math_047.Value -> mix_008.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.047"].outputs[0],
+        shader_nodetree.nodes["Mix.008"].inputs[7]
+    )
+    # math_048.Value -> mix_007.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.048"].outputs[0],
+        shader_nodetree.nodes["Mix.007"].inputs[7]
+    )
+    # image_texture_019.Color -> mix_009.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.019"].outputs[0],
+        shader_nodetree.nodes["Mix.009"].inputs[6]
+    )
+    # mix_009.Result -> mix_004.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.009"].outputs[2],
+        shader_nodetree.nodes["Mix.004"].inputs[6]
+    )
+    # image_texture_020.Color -> mix_010.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture.020"].outputs[0],
+        shader_nodetree.nodes["Mix.010"].inputs[6]
+    )
+    # mix_010.Result -> mix_004.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.010"].outputs[2],
+        shader_nodetree.nodes["Mix.004"].inputs[7]
+    )
+    # math_053.Value -> mix_009.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.053"].outputs[0],
+        shader_nodetree.nodes["Mix.009"].inputs[7]
+    )
+    # math_052.Value -> mix_010.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.052"].outputs[0],
+        shader_nodetree.nodes["Mix.010"].inputs[7]
+    )
+    # mix.Result -> emission_002.Color
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Emission.002"].inputs[0]
+    )
+    # separate_xyz_001.Y -> math_036.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[1],
+        shader_nodetree.nodes["Math.036"].inputs[0]
+    )
+    # separate_xyz_001.X -> math_035.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ.001"].outputs[0],
+        shader_nodetree.nodes["Math.035"].inputs[0]
+    )
+    # vector_math_015.Vector -> vector_math.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.015"].outputs[0],
+        shader_nodetree.nodes["Vector Math"].inputs[0]
+    )
+    # vector_math.Vector -> vector_math_001.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math"].outputs[0],
+        shader_nodetree.nodes["Vector Math.001"].inputs[0]
+    )
+    # vector_math_002.Vector -> vector_math_003.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.002"].outputs[0],
+        shader_nodetree.nodes["Vector Math.003"].inputs[0]
+    )
+    # vector_math_023.Vector -> vector_math_002.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.023"].outputs[0],
+        shader_nodetree.nodes["Vector Math.002"].inputs[0]
+    )
+    # vector_math_003.Vector -> image_texture_016.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.003"].outputs[0],
+        shader_nodetree.nodes["Image Texture.016"].inputs[0]
+    )
+    # vector_math_004.Vector -> vector_math_005.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.004"].outputs[0],
+        shader_nodetree.nodes["Vector Math.005"].inputs[0]
+    )
+    # vector_math_006.Vector -> vector_math_007.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.006"].outputs[0],
+        shader_nodetree.nodes["Vector Math.007"].inputs[0]
+    )
+    # vector_math_027.Vector -> vector_math_004.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.027"].outputs[0],
+        shader_nodetree.nodes["Vector Math.004"].inputs[0]
+    )
+    # vector_math_005.Vector -> image_texture_017.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.005"].outputs[0],
+        shader_nodetree.nodes["Image Texture.017"].inputs[0]
+    )
+    # vector_math_029.Vector -> vector_math_006.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.029"].outputs[0],
+        shader_nodetree.nodes["Vector Math.006"].inputs[0]
+    )
+    # vector_math_007.Vector -> image_texture_018.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.007"].outputs[0],
+        shader_nodetree.nodes["Image Texture.018"].inputs[0]
+    )
+    # vector_math_008.Vector -> vector_math_009.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.008"].outputs[0],
+        shader_nodetree.nodes["Vector Math.009"].inputs[0]
+    )
+    # vector_math_010.Vector -> vector_math_011.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.010"].outputs[0],
+        shader_nodetree.nodes["Vector Math.011"].inputs[0]
+    )
+    # vector_math_034.Vector -> vector_math_008.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.034"].outputs[0],
+        shader_nodetree.nodes["Vector Math.008"].inputs[0]
+    )
+    # vector_math_009.Vector -> image_texture_019.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.009"].outputs[0],
+        shader_nodetree.nodes["Image Texture.019"].inputs[0]
+    )
+    # vector_math_036.Vector -> vector_math_010.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.036"].outputs[0],
+        shader_nodetree.nodes["Vector Math.010"].inputs[0]
+    )
+    # vector_math_011.Vector -> image_texture_020.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Vector Math.011"].outputs[0],
+        shader_nodetree.nodes["Image Texture.020"].inputs[0]
     )

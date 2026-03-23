@@ -221,6 +221,40 @@ def com_parse(data: StrPtr) -> str | None:
             data += 1
         return data.data[start:data.pos]
 
+# ED_LoadFromFile
+def parse_entities(data: str) -> list[dict[str, str]]:
+    ptr = StrPtr(data)
+    entities = []
+    while True:
+        token = com_parse(ptr)
+        if token is None:
+            break
+        if token != '{':
+            raise ValueError(f"Expected '{{' but got '{token}'")
+        entity = {}
+        while True:
+            key = com_parse(ptr)
+            if key is None:
+                raise ValueError("Unexpected end of data inside entity")
+            if key == '}':
+                break
+            key = key.rstrip(' ')
+            value = com_parse(ptr)
+            if value is None:
+                raise ValueError(f"Missing value for key '{key}'")
+            if key == 'angle':
+                key = 'angles'
+                angle = float(value)
+                if angle >= 0:
+                    value = f"0 {angle} 0"
+                elif angle == -1:
+                    value = "-90 0 0"
+                else:
+                    value = "90 0 0"
+            entity[key] = value
+        entities.append(entity)
+    return entities
+
 @dataclass
 class Texture:
     name: str
@@ -251,6 +285,7 @@ class Bsp:
         self.textures = self.load_textures(self.header.lumps[LUMP.TEXTURES])
         self.texinfo = list(iter_lump_structs(self.file, self.header.lumps[LUMP.TEXINFO], TexInfo))
         self.faces = list(iter_lump_structs(self.file, self.header.lumps[LUMP.FACES], Face))
+
 
     def load_entities(self, lump: Lump) -> Optional[str]:
         if lump.length == 0:
@@ -466,7 +501,7 @@ class Bsp:
         for wad in self.wads:
             wad.file.close()
 
-    def create_models(self, scale: float, collection: bpy.types.Collection):
+    def create_models(self, scale: float, collection: bpy.types.Collection, texture_emissive_map: dict[str, tuple[float, Optional[tuple[int, int, int]]]]):
         for (i, model) in enumerate(iter_lump_structs(self.file, self.header.lumps[LUMP.MODELS], Model)):
             model_name = f"model_{i}"
             mesh: bpy.types.Mesh = bpy.data.meshes.new(model_name)
@@ -523,7 +558,8 @@ class Bsp:
 
                 material_names = [m.name for m in mesh.materials]
                 if texture.name not in [m.name for m in mesh.materials]:
-                    material = self.ensure_material(texture)
+                    emissive = texture_emissive_map.get(texture.name)
+                    material = self.ensure_material(texture, face, emissive)
                     index = len(mesh.materials)
                     mesh.materials.append(material)
                 else:
@@ -546,10 +582,24 @@ class Bsp:
                 obj.hide_viewport = True
                 obj.hide_render = True
 
-    def ensure_material(self, texture: Texture) -> bpy.types.Material:
+    def ensure_material(self, texture: Texture, face: Face, emissive: Optional[tuple[float, Optional[tuple[int, int, int]]]]) -> bpy.types.Material:
         if texture.name in bpy.data.materials:
             return bpy.data.materials[texture.name]
 
+        material: bpy.types.Material = bpy.data.materials.new(texture.name)
+        assert material.node_tree is not None
+        nodes: bpy.types.Nodes = material.node_tree.nodes
+        links: bpy.types.NodeLinks = material.node_tree.links
+
+        nodes.clear()
+
+        image_texture: bpy.types.ShaderNodeTexImage = nodes.new("ShaderNodeTexImage") # pyright: ignore[reportAssignmentType]
+        image_texture.extension = 'REPEAT'
+        image_texture.interpolation = 'Closest'
+        image_texture.projection = 'FLAT'
+        image_texture.location = (0.0, 0.0)
+
+        # R_TextureAnimation
         if texture.anim_total > 0:
             main_frames: list[Texture] = []
             current = texture
@@ -582,34 +632,94 @@ class Bsp:
             image.pixels = atlas_pixels # type: ignore
             image.pack()
 
-            material = bpy.data.materials.new(texture.name)
-            nodes = material.node_tree.nodes
-            links = material.node_tree.links
-            nodes.clear()
-            gsr_nodes.setup_anim_bsp_nodes(nodes, links, image, len(main_frames), len(alt_frames))
-            return material
+            animated_texture = gsr_nodes.new(nodes, "Animated Texture")
+            animated_texture.location = (-160.0, -140.0)
+            animated_texture.inputs[0].default_value = len(main_frames)
+            animated_texture.inputs[1].default_value = len(alt_frames)
+            links.new(animated_texture.outputs[0], image_texture.inputs[0])
 
-        image: bpy.types.Image = bpy.data.images.new(texture.name, texture.width, texture.height, alpha=True)
-        image.pixels = texture.pixels # type: ignore
-        image.pack()
-
-        material = bpy.data.materials.new(texture.name)
-        nodes = material.node_tree.nodes
-        links = material.node_tree.links
-
-        nodes.clear()
-        # idk if transparent can emit
-        # if name in LIGHTS:
-        #     f.seek(self.header.lumps[LUMP.LIGHTING].offset + face.lightmap_offset)
-        #     rgb_bytes = f.read(3)
-        #     color = (srgb_to_linear(rgb_bytes[0] / 255.0), srgb_to_linear(rgb_bytes[1] / 255.0), srgb_to_linear(rgb_bytes[2] / 255.0), 1.0)
-        #     strength = LIGHTS[name]
-        #     gsr_nodes.setup_emissive_bsp_nodes(nodes, links, image, color, strength)
-        # elif name[0] == "{":
-        if texture.name[0] == "{":
-            gsr_nodes.setup_transparent_bsp_nodes(nodes, links, image)
+            # gsr_nodes.setup_anim_bsp_nodes(nodes, links, image, len(main_frames), len(alt_frames))
         else:
-            gsr_nodes.setup_bsp_nodes(nodes, links, image)
+            image: bpy.types.Image = bpy.data.images.new(texture.name, texture.width, texture.height, alpha=True)
+            image.pixels = texture.pixels # type: ignore
+            image.pack()
+
+        image_texture.image = image
+
+        bsdf: bpy.types.ShaderNodeBsdfPrincipled = nodes.new("ShaderNodeBsdfPrincipled") # pyright: ignore[reportAssignmentType]
+        # Metallic
+        bsdf.inputs[1].default_value = 0.0
+        # Roughness
+        bsdf.inputs[2].default_value = 1.0
+        # IOR
+        bsdf.inputs[3].default_value = 1.0
+        links.new(image_texture.outputs[1], bsdf.inputs[4])
+
+        output: bpy.types.ShaderNodeOutputMaterial = nodes.new("ShaderNodeOutputMaterial") # pyright: ignore[reportAssignmentType]
+
+        # idk if transparent can emit
+        if emissive is not None:
+            strength, color = emissive
+            if color is None:
+                self.file.seek(self.header.lumps[LUMP.LIGHTING].offset + face.lightmap_offset)
+                color = self.file.read(3)
+
+            color = (srgb_to_linear(color[0] / 255.0), srgb_to_linear(color[1] / 255.0), srgb_to_linear(color[2] / 255.0), 1.0)
+            # gsr_nodes.setup_emissive_bsp_nodes(nodes, links, image, color, strength)
+
+            rgb: bpy.types.ShaderNodeRGB = nodes.new("ShaderNodeRGB") # pyright: ignore[reportAssignmentType]
+            rgb.outputs[0].default_value = color
+            rgb.location = (100.0, 160.0)
+
+            mix: bpy.types.ShaderNodeMix = nodes.new("ShaderNodeMix") # pyright: ignore[reportAssignmentType]
+            mix.name = "Mix"
+            mix.blend_type = 'MULTIPLY'
+            mix.clamp_factor = False
+            mix.clamp_result = False
+            mix.data_type = 'RGBA'
+            mix.factor_mode = 'UNIFORM'
+            mix.inputs[0].default_value = 1.0
+            mix.location = (260.0, 0.0)
+            links.new(rgb.outputs[0], mix.inputs[6])
+            links.new(image_texture.outputs[0], mix.inputs[7])
+            links.new(mix.outputs[2], bsdf.inputs[0])
+            links.new(mix.outputs[2], bsdf.inputs[27])
+
+            bsdf.inputs[28].default_value = 1.0
+            bsdf.location = (420.0, 0.0)
+
+            light_path: bpy.types.ShaderNodeLightPath = nodes.new("ShaderNodeLightPath") # pyright: ignore[reportAssignmentType]
+            for (name, socket) in light_path.outputs.items():
+                name: str; socket: bpy.types.NodeSocket
+                if name != "Is Camera Ray":
+                    socket.hide = True
+            light_path.location = (520.0, 180.0)
+
+            emission: bpy.types.ShaderNodeEmission = nodes.new("ShaderNodeEmission") # pyright: ignore[reportAssignmentType]
+            emission.inputs[1].default_value = strength
+            emission.location = (520.0, 120.0)
+            links.new(rgb.outputs[0], emission.inputs[0])
+
+            mix_shader: bpy.types.ShaderNodeMixShader = nodes.new("ShaderNodeMixShader") # pyright: ignore[reportAssignmentType]
+            mix_shader.location = (680.0, 120.0)
+            links.new(light_path.outputs[0], mix_shader.inputs[0])
+            links.new(emission.outputs[0], mix_shader.inputs[1])
+            links.new(bsdf.outputs[0], mix_shader.inputs[2])
+
+            output.location = (840.0, 0.0)
+            links.new(mix_shader.outputs[0], output.inputs[0])
+        else:
+            bsdf.location = (260.0, 0.0)
+            links.new(image_texture.outputs[0], bsdf.inputs[0])
+            output.location = (520.0, 0.0)
+            links.new(bsdf.outputs[0], output.inputs[0])
+
+        # FIXME: integrate with above
+        if texture.name[0] == "{":
+            nodes.clear()
+            gsr_nodes.setup_transparent_bsp_nodes(nodes, links, image)
+        # else:
+        #     gsr_nodes.setup_bsp_nodes(nodes, links, image)
 
         return material
 
@@ -646,3 +756,56 @@ class Bsp:
                 print(f"model_{i}: skipped {duplicate_faces} duplicate faces")
 
         return face_map
+
+    def create_lights(self, scale: float, collection: bpy.types.Collection):
+        if self.entities is None:
+            print("entities string was None - cannot create lights")
+            return
+
+        entities = parse_entities(self.entities)
+        for entity in entities:
+            if entity.get("classname") != "light":
+                continue
+
+            _light_key = entity.get("_light")
+            if _light_key is None:
+                print("skipping light without _light key")
+                continue
+
+            _light_parts = list(map(int, _light_key.split()))
+            if len(_light_parts) < 3:
+                print("skipping light whose _light had less than three parts")
+                continue
+
+            intensity = _light_parts[3] if len(_light_parts) == 4 else ((_light_parts[0] + _light_parts[1] + _light_parts[2]) / 3)
+
+            origin_key = entity.get("origin")
+            if origin_key is None:
+                print("skipping light without origin key")
+                continue
+
+            origin_parts = origin_key.split(" ")
+            if len(origin_parts) != 3:
+                print("skipping light whose origin didn't have three parts")
+                continue
+
+            location = Vector(list(map(float, origin_parts))) * scale
+
+            style = entity.get("style")
+            if style is None:
+                name = "light"
+            else:
+                name = "light_" + style
+
+            light_data: bpy.types.PointLight = bpy.data.lights.new(name=name, type="POINT")
+            light_data.color = _light_parts[0:3]
+            # TODO: use power of scale (inverse square law and stuff)
+            blender_power = intensity * scale * (1/50)
+            light_data.energy = blender_power
+            light_data["intensity"] = blender_power
+            if style is not None:
+                light_data["light_style"] = int(style)
+
+            light_obj = bpy.data.objects.new(light_data.name, light_data)
+            light_obj.location = location
+            collection.objects.link(light_obj)

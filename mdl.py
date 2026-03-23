@@ -573,8 +573,8 @@ class Mdl:
                     texture_file = fs.open(texture_file_name, "rb")
                     if texture_file is None:
                         raise Exception(f"{texture_file_name} not found")
-                    texture_mdl = _parse_mdl(BinaryReader(texture_file))
-                    textures=  texture_mdl.textures
+                    texture_mdl = _parse_mdl(BinaryReader(texture_file), fs)
+                    textures = texture_mdl.textures
             else:
                 textures = self.textures
             if skin_ref not in mat_slot:
@@ -733,7 +733,7 @@ class Mdl:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def from_file(file: BinaryIO) -> 'Mdl':
+    def from_file(file: BinaryIO, fs: FileSystem) -> 'Mdl':
         """
         Load a GoldSrc MDL file.  If the main header has no textures
         (textureindex == 0), a companion *T.mdl texture file is located
@@ -744,7 +744,7 @@ class Mdl:
         needed to do so in the future.
         """
         file.seek(0)
-        mdl = _parse_mdl(BinaryReader(file))
+        mdl = _parse_mdl(BinaryReader(file), fs)
 
         # If the main file carries no texture data, look for a separate
         # texture header (e.g. "playerT.mdl" alongside "player.mdl").
@@ -776,7 +776,7 @@ def _derive_texture_filepath(main_filepath: str) -> Optional[str]:
 # Parser
 # ---------------------------------------------------------------------------
 
-def _parse_mdl(br: BinaryReader) -> Mdl:
+def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
     bones: List[Bone] = []
     bone_controllers: List[BoneController] = []
     hitboxes: List[Hitbox] = []
@@ -898,6 +898,12 @@ def _parse_mdl(br: BinaryReader) -> Mdl:
 
         if seq.sequence_group == 0:
             seq.blends = _read_animation_blends(br, seq, bones)
+        else:
+            sequence_group = sequence_groups[seq.sequence_group]
+            group_file = fs.open(sequence_group.name, "rb")
+            if group_file is None:
+                raise Exception(f"Didn't find sequence group file \"{sequence_group.name}\"")
+            seq.blends = _read_animation_blends(BinaryReader(group_file), seq, bones)
 
         br.seek(seq.event_index)
         for _ in range(seq.num_events):
