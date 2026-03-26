@@ -437,7 +437,7 @@ class Mdl:
     # Public API
     # ------------------------------------------------------------------
 
-    def create_object(self, mod: Mod, name: str, fs: FileSystem, scale: float, collection, body_hidden_driver: bool = True) -> 'bpy.types.Object':
+    def create_object(self, mod: Mod, name: str, fs: FileSystem, scale: float, collection) -> 'bpy.types.Object':
         """
         Import this MDL into the current Blender scene.
 
@@ -452,7 +452,7 @@ class Mdl:
         for body_part in self.body_parts:
             for body_part_model in body_part.models:
                 self._create_body_part_mesh(
-                    body_part_model, armature_obj, bone_transforms, mod, name, fs, scale, collection, body_hidden_driver
+                    body_part_model, armature_obj, bone_transforms, mod, name, fs, scale, collection
                 )
 
         return armature_obj
@@ -526,7 +526,6 @@ class Mdl:
         fs: FileSystem,
         scale: float,
         collection,
-        body_hidden_driver: bool,
     ) -> None:
         """
         Build one Blender mesh object for *body_part_model* and parent it to
@@ -676,57 +675,8 @@ class Mdl:
             obj_mesh.use_auto_smooth = True
         obj_mesh.normals_split_custom_set(transformed)
 
-        # ── armature modifier + visibility driver ──────────────────────────
-        mod        = obj.modifiers.new(name='Armature', type='ARMATURE')
-        mod.object = armature_obj
-
-        if body_hidden_driver:
-            obj["body_hidden"] = True
-
-        for path in ["hide_render", "hide_viewport"]:
-            visibility_driver = obj.driver_add(path).driver
-            visibility_driver.type = "SCRIPTED"
-
-            parent_draw_driver_var = visibility_driver.variables.new()
-            parent_draw_driver_var.name = "parent_draw"
-            parent_draw_driver_var.type = "SINGLE_PROP"
-            parent_draw_driver_var.targets[0].id = armature_obj
-            parent_draw_driver_var.targets[0].data_path = '["draw"]'
-
-            if body_hidden_driver:
-                body_hidden_driver_var = visibility_driver.variables.new()
-                body_hidden_driver_var.name = "body_hidden"
-                body_hidden_driver_var.type = "SINGLE_PROP"
-                body_hidden_driver_var.targets[0].id = obj
-                body_hidden_driver_var.targets[0].data_path = '["body_hidden"]'
-
-                visibility_driver.expression = "not parent_draw or body_hidden"
-            else:
-                visibility_driver.expression = "not parent_draw"
-
-        if body_hidden_driver:
-            obj["rendermode"] = 0
-            obj.id_properties_ui("rendermode").update(
-                min=0,
-                max=5,
-                step=1,
-            )
-
-            obj["r_blend"] = 0.0
-            obj.id_properties_ui("r_blend").update(
-                min=0.0,
-                max=1.0,
-            )
-
-            obj["rendercolor"] = [1.0, 1.0, 1.0]
-            obj.id_properties_ui("rendercolor").update(
-                subtype="COLOR",
-                min=0.0,
-                max=1.0,
-                soft_min=0.0,
-                soft_max=1.0
-            )
-
+        modifier = obj.modifiers.new(name='Armature', type='ARMATURE')
+        modifier.object = armature_obj
 
     # ------------------------------------------------------------------
     # File loading

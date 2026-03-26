@@ -213,11 +213,6 @@ def sprite_frame_offset_1_node_group():
     group_input = sprite_frame_offset_1.nodes.new("NodeGroupInput")
     group_input.name = "Group Input"
 
-    # Node Texture Coordinate
-    texture_coordinate = sprite_frame_offset_1.nodes.new("ShaderNodeTexCoord")
-    texture_coordinate.name = "Texture Coordinate"
-    texture_coordinate.from_instancer = False
-
     # Node Separate XYZ
     separate_xyz = sprite_frame_offset_1.nodes.new("ShaderNodeSeparateXYZ")
     separate_xyz.name = "Separate XYZ"
@@ -246,15 +241,26 @@ def sprite_frame_offset_1_node_group():
     # Z
     combine_xyz.inputs[2].default_value = 0.0
 
+    # Node Texture Coordinate
+    texture_coordinate = sprite_frame_offset_1.nodes.new("ShaderNodeTexCoord")
+    texture_coordinate.name = "Texture Coordinate"
+    texture_coordinate.from_instancer = False
+    texture_coordinate.outputs[0].hide = True
+    texture_coordinate.outputs[1].hide = True
+    texture_coordinate.outputs[3].hide = True
+    texture_coordinate.outputs[4].hide = True
+    texture_coordinate.outputs[5].hide = True
+    texture_coordinate.outputs[6].hide = True
+
     # Set locations
-    sprite_frame_offset_1.nodes["Group Output"].location = (80.0, 40.0)
-    sprite_frame_offset_1.nodes["Group Input"].location = (-440.0, 0.0)
-    sprite_frame_offset_1.nodes["Texture Coordinate"].location = (-800.0, 40.0)
+    sprite_frame_offset_1.nodes["Group Output"].location = (20.0, -80.0)
+    sprite_frame_offset_1.nodes["Group Input"].location = (-460.0, -60.0)
     sprite_frame_offset_1.nodes["Separate XYZ"].location = (-620.0, -80.0)
-    sprite_frame_offset_1.nodes["Attribute"].location = (-620.0, 120.0)
-    sprite_frame_offset_1.nodes["Math"].location = (-440.0, 160.0)
-    sprite_frame_offset_1.nodes["Math.001"].location = (-260.0, 160.0)
-    sprite_frame_offset_1.nodes["Combine XYZ"].location = (-80.0, 40.0)
+    sprite_frame_offset_1.nodes["Attribute"].location = (-620.0, 100.0)
+    sprite_frame_offset_1.nodes["Math"].location = (-460.0, 100.0)
+    sprite_frame_offset_1.nodes["Math.001"].location = (-300.0, 20.0)
+    sprite_frame_offset_1.nodes["Combine XYZ"].location = (-140.0, -80.0)
+    sprite_frame_offset_1.nodes["Texture Coordinate"].location = (-780.0, -80.0)
 
     # Set dimensions
     sprite_frame_offset_1.nodes["Group Output"].width  = 140.0
@@ -262,9 +268,6 @@ def sprite_frame_offset_1_node_group():
 
     sprite_frame_offset_1.nodes["Group Input"].width  = 140.0
     sprite_frame_offset_1.nodes["Group Input"].height = 100.0
-
-    sprite_frame_offset_1.nodes["Texture Coordinate"].width  = 140.0
-    sprite_frame_offset_1.nodes["Texture Coordinate"].height = 100.0
 
     sprite_frame_offset_1.nodes["Separate XYZ"].width  = 140.0
     sprite_frame_offset_1.nodes["Separate XYZ"].height = 100.0
@@ -281,14 +284,12 @@ def sprite_frame_offset_1_node_group():
     sprite_frame_offset_1.nodes["Combine XYZ"].width  = 140.0
     sprite_frame_offset_1.nodes["Combine XYZ"].height = 100.0
 
+    sprite_frame_offset_1.nodes["Texture Coordinate"].width  = 140.0
+    sprite_frame_offset_1.nodes["Texture Coordinate"].height = 100.0
+
 
     # Initialize sprite_frame_offset_1 links
 
-    # texture_coordinate.UV -> separate_xyz.Vector
-    sprite_frame_offset_1.links.new(
-        sprite_frame_offset_1.nodes["Texture Coordinate"].outputs[2],
-        sprite_frame_offset_1.nodes["Separate XYZ"].inputs[0]
-    )
     # math_001.Value -> combine_xyz.X
     sprite_frame_offset_1.links.new(
         sprite_frame_offset_1.nodes["Math.001"].outputs[0],
@@ -323,6 +324,11 @@ def sprite_frame_offset_1_node_group():
     sprite_frame_offset_1.links.new(
         sprite_frame_offset_1.nodes["Combine XYZ"].outputs[0],
         sprite_frame_offset_1.nodes["Group Output"].inputs[0]
+    )
+    # texture_coordinate.UV -> separate_xyz.Vector
+    sprite_frame_offset_1.links.new(
+        sprite_frame_offset_1.nodes["Texture Coordinate"].outputs[2],
+        sprite_frame_offset_1.nodes["Separate XYZ"].inputs[0]
     )
 
     return sprite_frame_offset_1
@@ -986,31 +992,31 @@ def goldsrc_emissive_1_node_group():
 
     return goldsrc_emissive_1
 
-def beam_1_node_group():
-    """Initialize Beam node group"""
-    beam_1 = bpy.data.node_groups.new(type='GeometryNodeTree', name="Beam Segment")
+def beam_segment_1_node_group():
+    """Initialize Beam Segment node group"""
+    beam_segment_1 = bpy.data.node_groups.new(type='GeometryNodeTree', name="Beam Segment")
 
-    beam_1.color_tag = 'NONE'
-    beam_1.description = ""
-    beam_1.default_group_node_width = 140
-    beam_1.show_modifier_manage_panel = True
+    beam_segment_1.color_tag = 'NONE'
+    beam_segment_1.description = ""
+    beam_segment_1.default_group_node_width = 140
+    beam_segment_1.show_modifier_manage_panel = True
 
-    # beam_1 interface
+    # beam_segment_1 interface
 
     # Socket Geometry
-    geometry_socket = beam_1.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    geometry_socket = beam_segment_1.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
     geometry_socket.attribute_domain = 'POINT'
     geometry_socket.default_input = 'VALUE'
     geometry_socket.structure_type = 'AUTO'
 
     # Socket Material
-    material_socket = beam_1.interface.new_socket(name="Material", in_out='INPUT', socket_type='NodeSocketMaterial')
+    material_socket = beam_segment_1.interface.new_socket(name="Material", in_out='INPUT', socket_type='NodeSocketMaterial')
     material_socket.attribute_domain = 'POINT'
     material_socket.default_input = 'VALUE'
     material_socket.structure_type = 'AUTO'
 
     # Socket Source
-    source_socket = beam_1.interface.new_socket(name="Source", in_out='INPUT', socket_type='NodeSocketVector')
+    source_socket = beam_segment_1.interface.new_socket(name="Source", in_out='INPUT', socket_type='NodeSocketVector')
     source_socket.default_value = (0.0, 0.0, 0.0)
     source_socket.min_value = -3.4028234663852886e+38
     source_socket.max_value = 3.4028234663852886e+38
@@ -1020,7 +1026,7 @@ def beam_1_node_group():
     source_socket.structure_type = 'AUTO'
 
     # Socket Delta
-    delta_socket = beam_1.interface.new_socket(name="Delta", in_out='INPUT', socket_type='NodeSocketVector')
+    delta_socket = beam_segment_1.interface.new_socket(name="Delta", in_out='INPUT', socket_type='NodeSocketVector')
     delta_socket.default_value = (0.0, 0.0, 0.0)
     delta_socket.min_value = -3.4028234663852886e+38
     delta_socket.max_value = 3.4028234663852886e+38
@@ -1030,7 +1036,7 @@ def beam_1_node_group():
     delta_socket.structure_type = 'AUTO'
 
     # Socket Width
-    width_socket = beam_1.interface.new_socket(name="Width", in_out='INPUT', socket_type='NodeSocketFloat')
+    width_socket = beam_segment_1.interface.new_socket(name="Width", in_out='INPUT', socket_type='NodeSocketFloat')
     width_socket.default_value = 0.0
     width_socket.min_value = -3.4028234663852886e+38
     width_socket.max_value = 3.4028234663852886e+38
@@ -1040,7 +1046,7 @@ def beam_1_node_group():
     width_socket.structure_type = 'AUTO'
 
     # Socket Segments
-    segments_socket = beam_1.interface.new_socket(name="Segments", in_out='INPUT', socket_type='NodeSocketInt')
+    segments_socket = beam_segment_1.interface.new_socket(name="Segments", in_out='INPUT', socket_type='NodeSocketInt')
     segments_socket.default_value = 0
     segments_socket.min_value = -2147483648
     segments_socket.max_value = 2147483647
@@ -1049,30 +1055,30 @@ def beam_1_node_group():
     segments_socket.default_input = 'VALUE'
     segments_socket.structure_type = 'AUTO'
 
-    # Initialize beam_1 nodes
+    # Initialize beam_segment_1 nodes
 
     # Node Group Output
-    group_output = beam_1.nodes.new("NodeGroupOutput")
+    group_output = beam_segment_1.nodes.new("NodeGroupOutput")
     group_output.name = "Group Output"
     group_output.is_active_output = True
 
     # Node Group Input
-    group_input = beam_1.nodes.new("NodeGroupInput")
+    group_input = beam_segment_1.nodes.new("NodeGroupInput")
     group_input.name = "Group Input"
 
     # Node Object Info
-    object_info = beam_1.nodes.new("GeometryNodeObjectInfo")
+    object_info = beam_segment_1.nodes.new("GeometryNodeObjectInfo")
     object_info.name = "Object Info"
     object_info.transform_space = 'ORIGINAL'
     # As Instance
     object_info.inputs[1].default_value = False
 
     # Node Active Camera
-    active_camera = beam_1.nodes.new("GeometryNodeInputActiveCamera")
+    active_camera = beam_segment_1.nodes.new("GeometryNodeInputActiveCamera")
     active_camera.name = "Active Camera"
 
     # Node Grid
-    grid = beam_1.nodes.new("GeometryNodeMeshGrid")
+    grid = beam_segment_1.nodes.new("GeometryNodeMeshGrid")
     grid.name = "Grid"
     # Size X
     grid.inputs[0].default_value = 1.0
@@ -1082,26 +1088,26 @@ def beam_1_node_group():
     grid.inputs[3].default_value = 2
 
     # Node Vector Math.001
-    vector_math_001 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_001 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_001.name = "Vector Math.001"
     vector_math_001.operation = 'LENGTH'
 
     # Node Vector Math.002
-    vector_math_002 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_002 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_002.label = "beam_dir"
     vector_math_002.name = "Vector Math.002"
     vector_math_002.operation = 'NORMALIZE'
 
     # Node Position
-    position = beam_1.nodes.new("GeometryNodeInputPosition")
+    position = beam_segment_1.nodes.new("GeometryNodeInputPosition")
     position.name = "Position"
 
     # Node Separate XYZ
-    separate_xyz = beam_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz = beam_segment_1.nodes.new("ShaderNodeSeparateXYZ")
     separate_xyz.name = "Separate XYZ"
 
     # Node Map Range
-    map_range = beam_1.nodes.new("ShaderNodeMapRange")
+    map_range = beam_segment_1.nodes.new("ShaderNodeMapRange")
     map_range.label = "t"
     map_range.name = "Map Range"
     map_range.clamp = True
@@ -1117,7 +1123,7 @@ def beam_1_node_group():
     map_range.inputs[4].default_value = 1.0
 
     # Node Set Position
-    set_position = beam_1.nodes.new("GeometryNodeSetPosition")
+    set_position = beam_segment_1.nodes.new("GeometryNodeSetPosition")
     set_position.name = "Set Position"
     # Selection
     set_position.inputs[1].default_value = True
@@ -1125,46 +1131,46 @@ def beam_1_node_group():
     set_position.inputs[3].default_value = (0.0, 0.0, 0.0)
 
     # Node Vector Math.005
-    vector_math_005 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_005 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_005.name = "Vector Math.005"
     vector_math_005.operation = 'SCALE'
 
     # Node Math
-    math = beam_1.nodes.new("ShaderNodeMath")
+    math = beam_segment_1.nodes.new("ShaderNodeMath")
     math.name = "Math"
     math.operation = 'MULTIPLY'
     math.use_clamp = False
 
     # Node Vector Math.003
-    vector_math_003 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_003 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_003.label = "beam_point"
     vector_math_003.name = "Vector Math.003"
     vector_math_003.operation = 'ADD'
 
     # Node Math.001
-    math_001 = beam_1.nodes.new("ShaderNodeMath")
+    math_001 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_001.name = "Math.001"
     math_001.operation = 'SIGN'
     math_001.use_clamp = False
 
     # Node Math.002
-    math_002 = beam_1.nodes.new("ShaderNodeMath")
+    math_002 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_002.name = "Math.002"
     math_002.operation = 'MULTIPLY'
     math_002.use_clamp = False
 
     # Node Vector Math.006
-    vector_math_006 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_006 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_006.name = "Vector Math.006"
     vector_math_006.operation = 'SCALE'
 
     # Node Vector Math.008
-    vector_math_008 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_008 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_008.name = "Vector Math.008"
     vector_math_008.operation = 'ADD'
 
     # Node Math.003
-    math_003 = beam_1.nodes.new("ShaderNodeMath")
+    math_003 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_003.name = "Math.003"
     math_003.operation = 'MULTIPLY'
     math_003.use_clamp = False
@@ -1172,13 +1178,13 @@ def beam_1_node_group():
     math_003.inputs[1].default_value = -1.0
 
     # Node Set Material
-    set_material = beam_1.nodes.new("GeometryNodeSetMaterial")
+    set_material = beam_segment_1.nodes.new("GeometryNodeSetMaterial")
     set_material.name = "Set Material"
     # Selection
     set_material.inputs[1].default_value = True
 
     # Node Store Named Attribute
-    store_named_attribute = beam_1.nodes.new("GeometryNodeStoreNamedAttribute")
+    store_named_attribute = beam_segment_1.nodes.new("GeometryNodeStoreNamedAttribute")
     store_named_attribute.name = "Store Named Attribute"
     store_named_attribute.data_type = 'FLOAT2'
     store_named_attribute.domain = 'CORNER'
@@ -1188,13 +1194,13 @@ def beam_1_node_group():
     store_named_attribute.inputs[2].default_value = "UVMap"
 
     # Node Combine XYZ.001
-    combine_xyz_001 = beam_1.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz_001 = beam_segment_1.nodes.new("ShaderNodeCombineXYZ")
     combine_xyz_001.name = "Combine XYZ.001"
     # Z
     combine_xyz_001.inputs[2].default_value = 0.0
 
     # Node Map Range.002
-    map_range_002 = beam_1.nodes.new("ShaderNodeMapRange")
+    map_range_002 = beam_segment_1.nodes.new("ShaderNodeMapRange")
     map_range_002.label = "t"
     map_range_002.name = "Map Range.002"
     map_range_002.clamp = True
@@ -1210,7 +1216,7 @@ def beam_1_node_group():
     map_range_002.inputs[4].default_value = 1.0
 
     # Node Math.005
-    math_005 = beam_1.nodes.new("ShaderNodeMath")
+    math_005 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_005.name = "Math.005"
     math_005.operation = 'MULTIPLY'
     math_005.use_clamp = False
@@ -1220,38 +1226,38 @@ def beam_1_node_group():
     math_005.inputs[1].default_value = 0.0
 
     # Node Integer Math
-    integer_math = beam_1.nodes.new("FunctionNodeIntegerMath")
+    integer_math = beam_segment_1.nodes.new("FunctionNodeIntegerMath")
     integer_math.name = "Integer Math"
     integer_math.operation = 'MODULO'
     # Value_001
     integer_math.inputs[1].default_value = 1
 
     # Node Math.006
-    math_006 = beam_1.nodes.new("ShaderNodeMath")
+    math_006 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_006.name = "Math.006"
     math_006.operation = 'ADD'
     math_006.use_clamp = False
 
     # Node Transform Point
-    transform_point = beam_1.nodes.new("FunctionNodeTransformPoint")
+    transform_point = beam_segment_1.nodes.new("FunctionNodeTransformPoint")
     transform_point.name = "Transform Point"
 
     # Node Invert Matrix
-    invert_matrix = beam_1.nodes.new("FunctionNodeInvertMatrix")
+    invert_matrix = beam_segment_1.nodes.new("FunctionNodeInvertMatrix")
     invert_matrix.name = "Invert Matrix"
 
     # Node Separate XYZ.001
-    separate_xyz_001 = beam_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz_001 = beam_segment_1.nodes.new("ShaderNodeSeparateXYZ")
     separate_xyz_001.name = "Separate XYZ.001"
 
     # Node Math.004
-    math_004 = beam_1.nodes.new("ShaderNodeMath")
+    math_004 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_004.name = "Math.004"
     math_004.operation = 'DIVIDE'
     math_004.use_clamp = False
 
     # Node Math.007
-    math_007 = beam_1.nodes.new("ShaderNodeMath")
+    math_007 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_007.name = "Math.007"
     math_007.operation = 'MULTIPLY'
     math_007.use_clamp = False
@@ -1259,33 +1265,33 @@ def beam_1_node_group():
     math_007.inputs[1].default_value = -1.0
 
     # Node Math.008
-    math_008 = beam_1.nodes.new("ShaderNodeMath")
+    math_008 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_008.name = "Math.008"
     math_008.operation = 'DIVIDE'
     math_008.use_clamp = False
 
     # Node Combine XYZ
-    combine_xyz = beam_1.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz = beam_segment_1.nodes.new("ShaderNodeCombineXYZ")
     combine_xyz.name = "Combine XYZ"
     # Z
     combine_xyz.inputs[2].default_value = 0.0
 
     # Node Transform Point.001
-    transform_point_001 = beam_1.nodes.new("FunctionNodeTransformPoint")
+    transform_point_001 = beam_segment_1.nodes.new("FunctionNodeTransformPoint")
     transform_point_001.name = "Transform Point.001"
 
     # Node Separate XYZ.002
-    separate_xyz_002 = beam_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz_002 = beam_segment_1.nodes.new("ShaderNodeSeparateXYZ")
     separate_xyz_002.name = "Separate XYZ.002"
 
     # Node Math.009
-    math_009 = beam_1.nodes.new("ShaderNodeMath")
+    math_009 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_009.name = "Math.009"
     math_009.operation = 'DIVIDE'
     math_009.use_clamp = False
 
     # Node Math.010
-    math_010 = beam_1.nodes.new("ShaderNodeMath")
+    math_010 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_010.name = "Math.010"
     math_010.operation = 'MULTIPLY'
     math_010.use_clamp = False
@@ -1293,603 +1299,627 @@ def beam_1_node_group():
     math_010.inputs[1].default_value = -1.0
 
     # Node Math.011
-    math_011 = beam_1.nodes.new("ShaderNodeMath")
+    math_011 = beam_segment_1.nodes.new("ShaderNodeMath")
     math_011.name = "Math.011"
     math_011.operation = 'DIVIDE'
     math_011.use_clamp = False
 
     # Node Combine XYZ.002
-    combine_xyz_002 = beam_1.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz_002 = beam_segment_1.nodes.new("ShaderNodeCombineXYZ")
     combine_xyz_002.name = "Combine XYZ.002"
     # Z
     combine_xyz_002.inputs[2].default_value = 0.0
 
     # Node Vector Math
-    vector_math = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math.name = "Vector Math"
     vector_math.operation = 'ADD'
 
     # Node Vector Math.009
-    vector_math_009 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_009 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_009.name = "Vector Math.009"
     vector_math_009.operation = 'SUBTRACT'
 
     # Node Vector Math.010
-    vector_math_010 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_010 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_010.name = "Vector Math.010"
     vector_math_010.operation = 'NORMALIZE'
 
     # Node Transform Direction
-    transform_direction = beam_1.nodes.new("FunctionNodeTransformDirection")
+    transform_direction = beam_segment_1.nodes.new("FunctionNodeTransformDirection")
     transform_direction.name = "Transform Direction"
     # Direction
     transform_direction.inputs[0].default_value = (1.0, 0.0, 0.0)
 
     # Node Transform Direction.001
-    transform_direction_001 = beam_1.nodes.new("FunctionNodeTransformDirection")
+    transform_direction_001 = beam_segment_1.nodes.new("FunctionNodeTransformDirection")
     transform_direction_001.name = "Transform Direction.001"
     # Direction
     transform_direction_001.inputs[0].default_value = (0.0, 1.0, 0.0)
 
     # Node Vector Math.011
-    vector_math_011 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_011 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_011.name = "Vector Math.011"
     vector_math_011.operation = 'MULTIPLY'
 
     # Node Separate XYZ.003
-    separate_xyz_003 = beam_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz_003 = beam_segment_1.nodes.new("ShaderNodeSeparateXYZ")
     separate_xyz_003.name = "Separate XYZ.003"
 
     # Node Vector Math.012
-    vector_math_012 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_012 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_012.name = "Vector Math.012"
     vector_math_012.operation = 'MULTIPLY'
 
     # Node Vector Math.013
-    vector_math_013 = beam_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_013 = beam_segment_1.nodes.new("ShaderNodeVectorMath")
     vector_math_013.name = "Vector Math.013"
     vector_math_013.operation = 'SUBTRACT'
 
+    # Node Store Named Attribute.001
+    store_named_attribute_001 = beam_segment_1.nodes.new("GeometryNodeStoreNamedAttribute")
+    store_named_attribute_001.name = "Store Named Attribute.001"
+    store_named_attribute_001.data_type = 'FLOAT'
+    store_named_attribute_001.domain = 'CORNER'
+    # Selection
+    store_named_attribute_001.inputs[1].default_value = True
+    # Name
+    store_named_attribute_001.inputs[2].default_value = "EdgeMap"
+
     # Set locations
-    beam_1.nodes["Group Output"].location = (1260.0, -60.0)
-    beam_1.nodes["Group Input"].location = (-2220.0, -80.0)
-    beam_1.nodes["Object Info"].location = (-1960.0, -300.0)
-    beam_1.nodes["Active Camera"].location = (-2120.0, -420.0)
-    beam_1.nodes["Grid"].location = (620.0, -60.0)
-    beam_1.nodes["Vector Math.001"].location = (-20.0, -200.0)
-    beam_1.nodes["Vector Math.002"].location = (-20.0, -80.0)
-    beam_1.nodes["Position"].location = (-340.0, -580.0)
-    beam_1.nodes["Separate XYZ"].location = (-180.0, -580.0)
-    beam_1.nodes["Map Range"].location = (-20.0, -320.0)
-    beam_1.nodes["Set Position"].location = (940.0, -60.0)
-    beam_1.nodes["Vector Math.005"].location = (300.0, -180.0)
-    beam_1.nodes["Math"].location = (140.0, -180.0)
-    beam_1.nodes["Vector Math.003"].location = (460.0, -180.0)
-    beam_1.nodes["Math.001"].location = (-20.0, -580.0)
-    beam_1.nodes["Math.002"].location = (140.0, -580.0)
-    beam_1.nodes["Vector Math.006"].location = (460.0, -340.0)
-    beam_1.nodes["Vector Math.008"].location = (620.0, -240.0)
-    beam_1.nodes["Math.003"].location = (300.0, -580.0)
-    beam_1.nodes["Set Material"].location = (1100.0, -60.0)
-    beam_1.nodes["Store Named Attribute"].location = (780.0, -60.0)
-    beam_1.nodes["Combine XYZ.001"].location = (620.0, -740.0)
-    beam_1.nodes["Map Range.002"].location = (-20.0, -740.0)
-    beam_1.nodes["Math.005"].location = (140.0, -820.0)
-    beam_1.nodes["Integer Math"].location = (300.0, -820.0)
-    beam_1.nodes["Math.006"].location = (460.0, -820.0)
-    beam_1.nodes["Transform Point"].location = (-1620.0, -440.0)
-    beam_1.nodes["Invert Matrix"].location = (-1780.0, -440.0)
-    beam_1.nodes["Separate XYZ.001"].location = (-1460.0, -440.0)
-    beam_1.nodes["Math.004"].location = (-1300.0, -440.0)
-    beam_1.nodes["Math.007"].location = (-1460.0, -580.0)
-    beam_1.nodes["Math.008"].location = (-1300.0, -600.0)
-    beam_1.nodes["Combine XYZ"].location = (-1140.0, -440.0)
-    beam_1.nodes["Transform Point.001"].location = (-1620.0, -760.0)
-    beam_1.nodes["Separate XYZ.002"].location = (-1460.0, -760.0)
-    beam_1.nodes["Math.009"].location = (-1300.0, -760.0)
-    beam_1.nodes["Math.010"].location = (-1460.0, -900.0)
-    beam_1.nodes["Math.011"].location = (-1300.0, -920.0)
-    beam_1.nodes["Combine XYZ.002"].location = (-1140.0, -760.0)
-    beam_1.nodes["Vector Math"].location = (-1780.0, -760.0)
-    beam_1.nodes["Vector Math.009"].location = (-980.0, -440.0)
-    beam_1.nodes["Vector Math.010"].location = (-820.0, -440.0)
-    beam_1.nodes["Transform Direction"].location = (-660.0, -580.0)
-    beam_1.nodes["Transform Direction.001"].location = (-660.0, -300.0)
-    beam_1.nodes["Vector Math.011"].location = (-500.0, -340.0)
-    beam_1.nodes["Separate XYZ.003"].location = (-660.0, -440.0)
-    beam_1.nodes["Vector Math.012"].location = (-500.0, -480.0)
-    beam_1.nodes["Vector Math.013"].location = (-340.0, -400.0)
+    beam_segment_1.nodes["Group Output"].location = (1420.0, -60.0)
+    beam_segment_1.nodes["Group Input"].location = (-2220.0, -80.0)
+    beam_segment_1.nodes["Object Info"].location = (-1960.0, -300.0)
+    beam_segment_1.nodes["Active Camera"].location = (-2120.0, -420.0)
+    beam_segment_1.nodes["Grid"].location = (620.0, -60.0)
+    beam_segment_1.nodes["Vector Math.001"].location = (-20.0, -200.0)
+    beam_segment_1.nodes["Vector Math.002"].location = (-20.0, -80.0)
+    beam_segment_1.nodes["Position"].location = (-340.0, -580.0)
+    beam_segment_1.nodes["Separate XYZ"].location = (-180.0, -580.0)
+    beam_segment_1.nodes["Map Range"].location = (-20.0, -320.0)
+    beam_segment_1.nodes["Set Position"].location = (1100.0, -60.0)
+    beam_segment_1.nodes["Vector Math.005"].location = (300.0, -180.0)
+    beam_segment_1.nodes["Math"].location = (140.0, -180.0)
+    beam_segment_1.nodes["Vector Math.003"].location = (460.0, -180.0)
+    beam_segment_1.nodes["Math.001"].location = (-20.0, -580.0)
+    beam_segment_1.nodes["Math.002"].location = (140.0, -580.0)
+    beam_segment_1.nodes["Vector Math.006"].location = (460.0, -340.0)
+    beam_segment_1.nodes["Vector Math.008"].location = (620.0, -240.0)
+    beam_segment_1.nodes["Math.003"].location = (300.0, -580.0)
+    beam_segment_1.nodes["Set Material"].location = (1260.0, -60.0)
+    beam_segment_1.nodes["Store Named Attribute"].location = (780.0, -60.0)
+    beam_segment_1.nodes["Combine XYZ.001"].location = (620.0, -740.0)
+    beam_segment_1.nodes["Map Range.002"].location = (-20.0, -740.0)
+    beam_segment_1.nodes["Math.005"].location = (140.0, -820.0)
+    beam_segment_1.nodes["Integer Math"].location = (300.0, -820.0)
+    beam_segment_1.nodes["Math.006"].location = (460.0, -820.0)
+    beam_segment_1.nodes["Transform Point"].location = (-1620.0, -440.0)
+    beam_segment_1.nodes["Invert Matrix"].location = (-1780.0, -440.0)
+    beam_segment_1.nodes["Separate XYZ.001"].location = (-1460.0, -440.0)
+    beam_segment_1.nodes["Math.004"].location = (-1300.0, -440.0)
+    beam_segment_1.nodes["Math.007"].location = (-1460.0, -580.0)
+    beam_segment_1.nodes["Math.008"].location = (-1300.0, -600.0)
+    beam_segment_1.nodes["Combine XYZ"].location = (-1140.0, -440.0)
+    beam_segment_1.nodes["Transform Point.001"].location = (-1620.0, -760.0)
+    beam_segment_1.nodes["Separate XYZ.002"].location = (-1460.0, -760.0)
+    beam_segment_1.nodes["Math.009"].location = (-1300.0, -760.0)
+    beam_segment_1.nodes["Math.010"].location = (-1460.0, -900.0)
+    beam_segment_1.nodes["Math.011"].location = (-1300.0, -920.0)
+    beam_segment_1.nodes["Combine XYZ.002"].location = (-1140.0, -760.0)
+    beam_segment_1.nodes["Vector Math"].location = (-1780.0, -760.0)
+    beam_segment_1.nodes["Vector Math.009"].location = (-980.0, -440.0)
+    beam_segment_1.nodes["Vector Math.010"].location = (-820.0, -440.0)
+    beam_segment_1.nodes["Transform Direction"].location = (-660.0, -580.0)
+    beam_segment_1.nodes["Transform Direction.001"].location = (-660.0, -300.0)
+    beam_segment_1.nodes["Vector Math.011"].location = (-500.0, -340.0)
+    beam_segment_1.nodes["Separate XYZ.003"].location = (-660.0, -440.0)
+    beam_segment_1.nodes["Vector Math.012"].location = (-500.0, -480.0)
+    beam_segment_1.nodes["Vector Math.013"].location = (-340.0, -400.0)
+    beam_segment_1.nodes["Store Named Attribute.001"].location = (940.0, -60.0)
 
     # Set dimensions
-    beam_1.nodes["Group Output"].width  = 140.0
-    beam_1.nodes["Group Output"].height = 100.0
+    beam_segment_1.nodes["Group Output"].width  = 140.0
+    beam_segment_1.nodes["Group Output"].height = 100.0
 
-    beam_1.nodes["Group Input"].width  = 140.0
-    beam_1.nodes["Group Input"].height = 100.0
+    beam_segment_1.nodes["Group Input"].width  = 140.0
+    beam_segment_1.nodes["Group Input"].height = 100.0
 
-    beam_1.nodes["Object Info"].width  = 140.0
-    beam_1.nodes["Object Info"].height = 100.0
+    beam_segment_1.nodes["Object Info"].width  = 140.0
+    beam_segment_1.nodes["Object Info"].height = 100.0
 
-    beam_1.nodes["Active Camera"].width  = 140.0
-    beam_1.nodes["Active Camera"].height = 100.0
+    beam_segment_1.nodes["Active Camera"].width  = 140.0
+    beam_segment_1.nodes["Active Camera"].height = 100.0
 
-    beam_1.nodes["Grid"].width  = 140.0
-    beam_1.nodes["Grid"].height = 100.0
+    beam_segment_1.nodes["Grid"].width  = 140.0
+    beam_segment_1.nodes["Grid"].height = 100.0
 
-    beam_1.nodes["Vector Math.001"].width  = 140.0
-    beam_1.nodes["Vector Math.001"].height = 100.0
+    beam_segment_1.nodes["Vector Math.001"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.001"].height = 100.0
 
-    beam_1.nodes["Vector Math.002"].width  = 140.0
-    beam_1.nodes["Vector Math.002"].height = 100.0
+    beam_segment_1.nodes["Vector Math.002"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.002"].height = 100.0
 
-    beam_1.nodes["Position"].width  = 140.0
-    beam_1.nodes["Position"].height = 100.0
+    beam_segment_1.nodes["Position"].width  = 140.0
+    beam_segment_1.nodes["Position"].height = 100.0
 
-    beam_1.nodes["Separate XYZ"].width  = 140.0
-    beam_1.nodes["Separate XYZ"].height = 100.0
+    beam_segment_1.nodes["Separate XYZ"].width  = 140.0
+    beam_segment_1.nodes["Separate XYZ"].height = 100.0
 
-    beam_1.nodes["Map Range"].width  = 140.0
-    beam_1.nodes["Map Range"].height = 100.0
+    beam_segment_1.nodes["Map Range"].width  = 140.0
+    beam_segment_1.nodes["Map Range"].height = 100.0
 
-    beam_1.nodes["Set Position"].width  = 140.0
-    beam_1.nodes["Set Position"].height = 100.0
+    beam_segment_1.nodes["Set Position"].width  = 140.0
+    beam_segment_1.nodes["Set Position"].height = 100.0
 
-    beam_1.nodes["Vector Math.005"].width  = 140.0
-    beam_1.nodes["Vector Math.005"].height = 100.0
+    beam_segment_1.nodes["Vector Math.005"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.005"].height = 100.0
 
-    beam_1.nodes["Math"].width  = 140.0
-    beam_1.nodes["Math"].height = 100.0
+    beam_segment_1.nodes["Math"].width  = 140.0
+    beam_segment_1.nodes["Math"].height = 100.0
 
-    beam_1.nodes["Vector Math.003"].width  = 140.0
-    beam_1.nodes["Vector Math.003"].height = 100.0
+    beam_segment_1.nodes["Vector Math.003"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.003"].height = 100.0
 
-    beam_1.nodes["Math.001"].width  = 140.0
-    beam_1.nodes["Math.001"].height = 100.0
+    beam_segment_1.nodes["Math.001"].width  = 140.0
+    beam_segment_1.nodes["Math.001"].height = 100.0
 
-    beam_1.nodes["Math.002"].width  = 140.0
-    beam_1.nodes["Math.002"].height = 100.0
+    beam_segment_1.nodes["Math.002"].width  = 140.0
+    beam_segment_1.nodes["Math.002"].height = 100.0
 
-    beam_1.nodes["Vector Math.006"].width  = 140.0
-    beam_1.nodes["Vector Math.006"].height = 100.0
+    beam_segment_1.nodes["Vector Math.006"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.006"].height = 100.0
 
-    beam_1.nodes["Vector Math.008"].width  = 140.0
-    beam_1.nodes["Vector Math.008"].height = 100.0
+    beam_segment_1.nodes["Vector Math.008"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.008"].height = 100.0
 
-    beam_1.nodes["Math.003"].width  = 140.0
-    beam_1.nodes["Math.003"].height = 100.0
+    beam_segment_1.nodes["Math.003"].width  = 140.0
+    beam_segment_1.nodes["Math.003"].height = 100.0
 
-    beam_1.nodes["Set Material"].width  = 140.0
-    beam_1.nodes["Set Material"].height = 100.0
+    beam_segment_1.nodes["Set Material"].width  = 140.0
+    beam_segment_1.nodes["Set Material"].height = 100.0
 
-    beam_1.nodes["Store Named Attribute"].width  = 140.0
-    beam_1.nodes["Store Named Attribute"].height = 100.0
+    beam_segment_1.nodes["Store Named Attribute"].width  = 140.0
+    beam_segment_1.nodes["Store Named Attribute"].height = 100.0
 
-    beam_1.nodes["Combine XYZ.001"].width  = 140.0
-    beam_1.nodes["Combine XYZ.001"].height = 100.0
+    beam_segment_1.nodes["Combine XYZ.001"].width  = 140.0
+    beam_segment_1.nodes["Combine XYZ.001"].height = 100.0
 
-    beam_1.nodes["Map Range.002"].width  = 140.0
-    beam_1.nodes["Map Range.002"].height = 100.0
+    beam_segment_1.nodes["Map Range.002"].width  = 140.0
+    beam_segment_1.nodes["Map Range.002"].height = 100.0
 
-    beam_1.nodes["Math.005"].width  = 140.0
-    beam_1.nodes["Math.005"].height = 100.0
+    beam_segment_1.nodes["Math.005"].width  = 140.0
+    beam_segment_1.nodes["Math.005"].height = 100.0
 
-    beam_1.nodes["Integer Math"].width  = 140.0
-    beam_1.nodes["Integer Math"].height = 100.0
+    beam_segment_1.nodes["Integer Math"].width  = 140.0
+    beam_segment_1.nodes["Integer Math"].height = 100.0
 
-    beam_1.nodes["Math.006"].width  = 140.0
-    beam_1.nodes["Math.006"].height = 100.0
+    beam_segment_1.nodes["Math.006"].width  = 140.0
+    beam_segment_1.nodes["Math.006"].height = 100.0
 
-    beam_1.nodes["Transform Point"].width  = 140.0
-    beam_1.nodes["Transform Point"].height = 100.0
+    beam_segment_1.nodes["Transform Point"].width  = 140.0
+    beam_segment_1.nodes["Transform Point"].height = 100.0
 
-    beam_1.nodes["Invert Matrix"].width  = 140.0
-    beam_1.nodes["Invert Matrix"].height = 100.0
+    beam_segment_1.nodes["Invert Matrix"].width  = 140.0
+    beam_segment_1.nodes["Invert Matrix"].height = 100.0
 
-    beam_1.nodes["Separate XYZ.001"].width  = 140.0
-    beam_1.nodes["Separate XYZ.001"].height = 100.0
+    beam_segment_1.nodes["Separate XYZ.001"].width  = 140.0
+    beam_segment_1.nodes["Separate XYZ.001"].height = 100.0
 
-    beam_1.nodes["Math.004"].width  = 140.0
-    beam_1.nodes["Math.004"].height = 100.0
+    beam_segment_1.nodes["Math.004"].width  = 140.0
+    beam_segment_1.nodes["Math.004"].height = 100.0
 
-    beam_1.nodes["Math.007"].width  = 140.0
-    beam_1.nodes["Math.007"].height = 100.0
+    beam_segment_1.nodes["Math.007"].width  = 140.0
+    beam_segment_1.nodes["Math.007"].height = 100.0
 
-    beam_1.nodes["Math.008"].width  = 140.0
-    beam_1.nodes["Math.008"].height = 100.0
+    beam_segment_1.nodes["Math.008"].width  = 140.0
+    beam_segment_1.nodes["Math.008"].height = 100.0
 
-    beam_1.nodes["Combine XYZ"].width  = 140.0
-    beam_1.nodes["Combine XYZ"].height = 100.0
+    beam_segment_1.nodes["Combine XYZ"].width  = 140.0
+    beam_segment_1.nodes["Combine XYZ"].height = 100.0
 
-    beam_1.nodes["Transform Point.001"].width  = 140.0
-    beam_1.nodes["Transform Point.001"].height = 100.0
+    beam_segment_1.nodes["Transform Point.001"].width  = 140.0
+    beam_segment_1.nodes["Transform Point.001"].height = 100.0
 
-    beam_1.nodes["Separate XYZ.002"].width  = 140.0
-    beam_1.nodes["Separate XYZ.002"].height = 100.0
+    beam_segment_1.nodes["Separate XYZ.002"].width  = 140.0
+    beam_segment_1.nodes["Separate XYZ.002"].height = 100.0
 
-    beam_1.nodes["Math.009"].width  = 140.0
-    beam_1.nodes["Math.009"].height = 100.0
+    beam_segment_1.nodes["Math.009"].width  = 140.0
+    beam_segment_1.nodes["Math.009"].height = 100.0
 
-    beam_1.nodes["Math.010"].width  = 140.0
-    beam_1.nodes["Math.010"].height = 100.0
+    beam_segment_1.nodes["Math.010"].width  = 140.0
+    beam_segment_1.nodes["Math.010"].height = 100.0
 
-    beam_1.nodes["Math.011"].width  = 140.0
-    beam_1.nodes["Math.011"].height = 100.0
+    beam_segment_1.nodes["Math.011"].width  = 140.0
+    beam_segment_1.nodes["Math.011"].height = 100.0
 
-    beam_1.nodes["Combine XYZ.002"].width  = 140.0
-    beam_1.nodes["Combine XYZ.002"].height = 100.0
+    beam_segment_1.nodes["Combine XYZ.002"].width  = 140.0
+    beam_segment_1.nodes["Combine XYZ.002"].height = 100.0
 
-    beam_1.nodes["Vector Math"].width  = 140.0
-    beam_1.nodes["Vector Math"].height = 100.0
+    beam_segment_1.nodes["Vector Math"].width  = 140.0
+    beam_segment_1.nodes["Vector Math"].height = 100.0
 
-    beam_1.nodes["Vector Math.009"].width  = 140.0
-    beam_1.nodes["Vector Math.009"].height = 100.0
+    beam_segment_1.nodes["Vector Math.009"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.009"].height = 100.0
 
-    beam_1.nodes["Vector Math.010"].width  = 140.0
-    beam_1.nodes["Vector Math.010"].height = 100.0
+    beam_segment_1.nodes["Vector Math.010"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.010"].height = 100.0
 
-    beam_1.nodes["Transform Direction"].width  = 140.0
-    beam_1.nodes["Transform Direction"].height = 100.0
+    beam_segment_1.nodes["Transform Direction"].width  = 140.0
+    beam_segment_1.nodes["Transform Direction"].height = 100.0
 
-    beam_1.nodes["Transform Direction.001"].width  = 140.0
-    beam_1.nodes["Transform Direction.001"].height = 100.0
+    beam_segment_1.nodes["Transform Direction.001"].width  = 140.0
+    beam_segment_1.nodes["Transform Direction.001"].height = 100.0
 
-    beam_1.nodes["Vector Math.011"].width  = 140.0
-    beam_1.nodes["Vector Math.011"].height = 100.0
+    beam_segment_1.nodes["Vector Math.011"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.011"].height = 100.0
 
-    beam_1.nodes["Separate XYZ.003"].width  = 140.0
-    beam_1.nodes["Separate XYZ.003"].height = 100.0
+    beam_segment_1.nodes["Separate XYZ.003"].width  = 140.0
+    beam_segment_1.nodes["Separate XYZ.003"].height = 100.0
 
-    beam_1.nodes["Vector Math.012"].width  = 140.0
-    beam_1.nodes["Vector Math.012"].height = 100.0
+    beam_segment_1.nodes["Vector Math.012"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.012"].height = 100.0
 
-    beam_1.nodes["Vector Math.013"].width  = 140.0
-    beam_1.nodes["Vector Math.013"].height = 100.0
+    beam_segment_1.nodes["Vector Math.013"].width  = 140.0
+    beam_segment_1.nodes["Vector Math.013"].height = 100.0
+
+    beam_segment_1.nodes["Store Named Attribute.001"].width  = 140.0
+    beam_segment_1.nodes["Store Named Attribute.001"].height = 100.0
 
 
-    # Initialize beam_1 links
+    # Initialize beam_segment_1 links
 
     # active_camera.Active Camera -> object_info.Object
-    beam_1.links.new(
-        beam_1.nodes["Active Camera"].outputs[0],
-        beam_1.nodes["Object Info"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Active Camera"].outputs[0],
+        beam_segment_1.nodes["Object Info"].inputs[0]
     )
     # separate_xyz.X -> map_range.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ"].outputs[0],
-        beam_1.nodes["Map Range"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ"].outputs[0],
+        beam_segment_1.nodes["Map Range"].inputs[0]
     )
     # math.Value -> vector_math_005.Scale
-    beam_1.links.new(
-        beam_1.nodes["Math"].outputs[0],
-        beam_1.nodes["Vector Math.005"].inputs[3]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math"].outputs[0],
+        beam_segment_1.nodes["Vector Math.005"].inputs[3]
     )
     # map_range.Result -> math.Value
-    beam_1.links.new(
-        beam_1.nodes["Map Range"].outputs[0],
-        beam_1.nodes["Math"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Map Range"].outputs[0],
+        beam_segment_1.nodes["Math"].inputs[1]
     )
     # vector_math_001.Value -> math.Value
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.001"].outputs[1],
-        beam_1.nodes["Math"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.001"].outputs[1],
+        beam_segment_1.nodes["Math"].inputs[0]
     )
     # vector_math_002.Vector -> vector_math_005.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.002"].outputs[0],
-        beam_1.nodes["Vector Math.005"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.002"].outputs[0],
+        beam_segment_1.nodes["Vector Math.005"].inputs[0]
     )
     # group_input.Source -> vector_math_003.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[1],
-        beam_1.nodes["Vector Math.003"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[1],
+        beam_segment_1.nodes["Vector Math.003"].inputs[0]
     )
     # vector_math_005.Vector -> vector_math_003.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.005"].outputs[0],
-        beam_1.nodes["Vector Math.003"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.005"].outputs[0],
+        beam_segment_1.nodes["Vector Math.003"].inputs[1]
     )
     # separate_xyz.Y -> math_001.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ"].outputs[1],
-        beam_1.nodes["Math.001"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ"].outputs[1],
+        beam_segment_1.nodes["Math.001"].inputs[0]
     )
     # math_001.Value -> math_002.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.001"].outputs[0],
-        beam_1.nodes["Math.002"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.001"].outputs[0],
+        beam_segment_1.nodes["Math.002"].inputs[0]
     )
     # vector_math_003.Vector -> vector_math_008.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.003"].outputs[0],
-        beam_1.nodes["Vector Math.008"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.003"].outputs[0],
+        beam_segment_1.nodes["Vector Math.008"].inputs[0]
     )
     # vector_math_006.Vector -> vector_math_008.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.006"].outputs[0],
-        beam_1.nodes["Vector Math.008"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.006"].outputs[0],
+        beam_segment_1.nodes["Vector Math.008"].inputs[1]
     )
     # vector_math_008.Vector -> set_position.Position
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.008"].outputs[0],
-        beam_1.nodes["Set Position"].inputs[2]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.008"].outputs[0],
+        beam_segment_1.nodes["Set Position"].inputs[2]
     )
     # group_input.Width -> math_002.Value
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[3],
-        beam_1.nodes["Math.002"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[3],
+        beam_segment_1.nodes["Math.002"].inputs[1]
     )
     # math_002.Value -> math_003.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.002"].outputs[0],
-        beam_1.nodes["Math.003"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.002"].outputs[0],
+        beam_segment_1.nodes["Math.003"].inputs[0]
     )
     # group_input.Segments -> grid.Vertices X
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[4],
-        beam_1.nodes["Grid"].inputs[2]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[4],
+        beam_segment_1.nodes["Grid"].inputs[2]
     )
     # group_input.Delta -> vector_math_001.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[2],
-        beam_1.nodes["Vector Math.001"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[2],
+        beam_segment_1.nodes["Vector Math.001"].inputs[0]
     )
     # group_input.Delta -> vector_math_002.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[2],
-        beam_1.nodes["Vector Math.002"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[2],
+        beam_segment_1.nodes["Vector Math.002"].inputs[0]
     )
     # group_input.Material -> set_material.Material
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[0],
-        beam_1.nodes["Set Material"].inputs[2]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[0],
+        beam_segment_1.nodes["Set Material"].inputs[2]
     )
     # set_position.Geometry -> set_material.Geometry
-    beam_1.links.new(
-        beam_1.nodes["Set Position"].outputs[0],
-        beam_1.nodes["Set Material"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Set Position"].outputs[0],
+        beam_segment_1.nodes["Set Material"].inputs[0]
     )
     # separate_xyz.Y -> map_range_002.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ"].outputs[1],
-        beam_1.nodes["Map Range.002"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ"].outputs[1],
+        beam_segment_1.nodes["Map Range.002"].inputs[0]
     )
     # math_005.Value -> integer_math.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.005"].outputs[0],
-        beam_1.nodes["Integer Math"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.005"].outputs[0],
+        beam_segment_1.nodes["Integer Math"].inputs[0]
     )
     # integer_math.Value -> math_006.Value
-    beam_1.links.new(
-        beam_1.nodes["Integer Math"].outputs[0],
-        beam_1.nodes["Math.006"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Integer Math"].outputs[0],
+        beam_segment_1.nodes["Math.006"].inputs[1]
     )
     # math.Value -> math_006.Value
-    beam_1.links.new(
-        beam_1.nodes["Math"].outputs[0],
-        beam_1.nodes["Math.006"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math"].outputs[0],
+        beam_segment_1.nodes["Math.006"].inputs[0]
     )
     # math_006.Value -> combine_xyz_001.Y
-    beam_1.links.new(
-        beam_1.nodes["Math.006"].outputs[0],
-        beam_1.nodes["Combine XYZ.001"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.006"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ.001"].inputs[1]
     )
     # map_range_002.Result -> combine_xyz_001.X
-    beam_1.links.new(
-        beam_1.nodes["Map Range.002"].outputs[0],
-        beam_1.nodes["Combine XYZ.001"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Map Range.002"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ.001"].inputs[0]
     )
     # combine_xyz_001.Vector -> store_named_attribute.Value
-    beam_1.links.new(
-        beam_1.nodes["Combine XYZ.001"].outputs[0],
-        beam_1.nodes["Store Named Attribute"].inputs[3]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Combine XYZ.001"].outputs[0],
+        beam_segment_1.nodes["Store Named Attribute"].inputs[3]
     )
     # set_material.Geometry -> group_output.Geometry
-    beam_1.links.new(
-        beam_1.nodes["Set Material"].outputs[0],
-        beam_1.nodes["Group Output"].inputs[0]
-    )
-    # grid.Mesh -> store_named_attribute.Geometry
-    beam_1.links.new(
-        beam_1.nodes["Grid"].outputs[0],
-        beam_1.nodes["Store Named Attribute"].inputs[0]
-    )
-    # store_named_attribute.Geometry -> set_position.Geometry
-    beam_1.links.new(
-        beam_1.nodes["Store Named Attribute"].outputs[0],
-        beam_1.nodes["Set Position"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Set Material"].outputs[0],
+        beam_segment_1.nodes["Group Output"].inputs[0]
     )
     # invert_matrix.Matrix -> transform_point.Transform
-    beam_1.links.new(
-        beam_1.nodes["Invert Matrix"].outputs[0],
-        beam_1.nodes["Transform Point"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Invert Matrix"].outputs[0],
+        beam_segment_1.nodes["Transform Point"].inputs[1]
     )
     # position.Position -> separate_xyz.Vector
-    beam_1.links.new(
-        beam_1.nodes["Position"].outputs[0],
-        beam_1.nodes["Separate XYZ"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Position"].outputs[0],
+        beam_segment_1.nodes["Separate XYZ"].inputs[0]
     )
     # object_info.Transform -> invert_matrix.Matrix
-    beam_1.links.new(
-        beam_1.nodes["Object Info"].outputs[0],
-        beam_1.nodes["Invert Matrix"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Object Info"].outputs[0],
+        beam_segment_1.nodes["Invert Matrix"].inputs[0]
     )
     # transform_point.Vector -> separate_xyz_001.Vector
-    beam_1.links.new(
-        beam_1.nodes["Transform Point"].outputs[0],
-        beam_1.nodes["Separate XYZ.001"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Transform Point"].outputs[0],
+        beam_segment_1.nodes["Separate XYZ.001"].inputs[0]
     )
     # separate_xyz_001.Z -> math_007.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.001"].outputs[2],
-        beam_1.nodes["Math.007"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.001"].outputs[2],
+        beam_segment_1.nodes["Math.007"].inputs[0]
     )
     # separate_xyz_001.X -> math_004.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.001"].outputs[0],
-        beam_1.nodes["Math.004"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.001"].outputs[0],
+        beam_segment_1.nodes["Math.004"].inputs[0]
     )
     # math_007.Value -> math_004.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.007"].outputs[0],
-        beam_1.nodes["Math.004"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.007"].outputs[0],
+        beam_segment_1.nodes["Math.004"].inputs[1]
     )
     # separate_xyz_001.Y -> math_008.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.001"].outputs[1],
-        beam_1.nodes["Math.008"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.001"].outputs[1],
+        beam_segment_1.nodes["Math.008"].inputs[0]
     )
     # math_007.Value -> math_008.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.007"].outputs[0],
-        beam_1.nodes["Math.008"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.007"].outputs[0],
+        beam_segment_1.nodes["Math.008"].inputs[1]
     )
     # math_004.Value -> combine_xyz.X
-    beam_1.links.new(
-        beam_1.nodes["Math.004"].outputs[0],
-        beam_1.nodes["Combine XYZ"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.004"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ"].inputs[0]
     )
     # math_008.Value -> combine_xyz.Y
-    beam_1.links.new(
-        beam_1.nodes["Math.008"].outputs[0],
-        beam_1.nodes["Combine XYZ"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.008"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ"].inputs[1]
     )
     # group_input.Source -> transform_point.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[1],
-        beam_1.nodes["Transform Point"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[1],
+        beam_segment_1.nodes["Transform Point"].inputs[0]
     )
     # transform_point_001.Vector -> separate_xyz_002.Vector
-    beam_1.links.new(
-        beam_1.nodes["Transform Point.001"].outputs[0],
-        beam_1.nodes["Separate XYZ.002"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Transform Point.001"].outputs[0],
+        beam_segment_1.nodes["Separate XYZ.002"].inputs[0]
     )
     # separate_xyz_002.Z -> math_010.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.002"].outputs[2],
-        beam_1.nodes["Math.010"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.002"].outputs[2],
+        beam_segment_1.nodes["Math.010"].inputs[0]
     )
     # separate_xyz_002.X -> math_009.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.002"].outputs[0],
-        beam_1.nodes["Math.009"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.002"].outputs[0],
+        beam_segment_1.nodes["Math.009"].inputs[0]
     )
     # math_010.Value -> math_009.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.010"].outputs[0],
-        beam_1.nodes["Math.009"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.010"].outputs[0],
+        beam_segment_1.nodes["Math.009"].inputs[1]
     )
     # separate_xyz_002.Y -> math_011.Value
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.002"].outputs[1],
-        beam_1.nodes["Math.011"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.002"].outputs[1],
+        beam_segment_1.nodes["Math.011"].inputs[0]
     )
     # math_010.Value -> math_011.Value
-    beam_1.links.new(
-        beam_1.nodes["Math.010"].outputs[0],
-        beam_1.nodes["Math.011"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.010"].outputs[0],
+        beam_segment_1.nodes["Math.011"].inputs[1]
     )
     # math_009.Value -> combine_xyz_002.X
-    beam_1.links.new(
-        beam_1.nodes["Math.009"].outputs[0],
-        beam_1.nodes["Combine XYZ.002"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.009"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ.002"].inputs[0]
     )
     # math_011.Value -> combine_xyz_002.Y
-    beam_1.links.new(
-        beam_1.nodes["Math.011"].outputs[0],
-        beam_1.nodes["Combine XYZ.002"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.011"].outputs[0],
+        beam_segment_1.nodes["Combine XYZ.002"].inputs[1]
     )
     # invert_matrix.Matrix -> transform_point_001.Transform
-    beam_1.links.new(
-        beam_1.nodes["Invert Matrix"].outputs[0],
-        beam_1.nodes["Transform Point.001"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Invert Matrix"].outputs[0],
+        beam_segment_1.nodes["Transform Point.001"].inputs[1]
     )
     # group_input.Source -> vector_math.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[1],
-        beam_1.nodes["Vector Math"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[1],
+        beam_segment_1.nodes["Vector Math"].inputs[0]
     )
     # group_input.Delta -> vector_math.Vector
-    beam_1.links.new(
-        beam_1.nodes["Group Input"].outputs[2],
-        beam_1.nodes["Vector Math"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Group Input"].outputs[2],
+        beam_segment_1.nodes["Vector Math"].inputs[1]
     )
     # vector_math.Vector -> transform_point_001.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math"].outputs[0],
-        beam_1.nodes["Transform Point.001"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math"].outputs[0],
+        beam_segment_1.nodes["Transform Point.001"].inputs[0]
     )
     # combine_xyz.Vector -> vector_math_009.Vector
-    beam_1.links.new(
-        beam_1.nodes["Combine XYZ"].outputs[0],
-        beam_1.nodes["Vector Math.009"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Combine XYZ"].outputs[0],
+        beam_segment_1.nodes["Vector Math.009"].inputs[0]
     )
     # combine_xyz_002.Vector -> vector_math_009.Vector
-    beam_1.links.new(
-        beam_1.nodes["Combine XYZ.002"].outputs[0],
-        beam_1.nodes["Vector Math.009"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Combine XYZ.002"].outputs[0],
+        beam_segment_1.nodes["Vector Math.009"].inputs[1]
     )
     # vector_math_009.Vector -> vector_math_010.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.009"].outputs[0],
-        beam_1.nodes["Vector Math.010"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.009"].outputs[0],
+        beam_segment_1.nodes["Vector Math.010"].inputs[0]
     )
     # object_info.Transform -> transform_direction.Transform
-    beam_1.links.new(
-        beam_1.nodes["Object Info"].outputs[0],
-        beam_1.nodes["Transform Direction"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Object Info"].outputs[0],
+        beam_segment_1.nodes["Transform Direction"].inputs[1]
     )
     # object_info.Transform -> transform_direction_001.Transform
-    beam_1.links.new(
-        beam_1.nodes["Object Info"].outputs[0],
-        beam_1.nodes["Transform Direction.001"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Object Info"].outputs[0],
+        beam_segment_1.nodes["Transform Direction.001"].inputs[1]
     )
     # vector_math_010.Vector -> separate_xyz_003.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.010"].outputs[0],
-        beam_1.nodes["Separate XYZ.003"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.010"].outputs[0],
+        beam_segment_1.nodes["Separate XYZ.003"].inputs[0]
     )
     # transform_direction_001.Direction -> vector_math_011.Vector
-    beam_1.links.new(
-        beam_1.nodes["Transform Direction.001"].outputs[0],
-        beam_1.nodes["Vector Math.011"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Transform Direction.001"].outputs[0],
+        beam_segment_1.nodes["Vector Math.011"].inputs[0]
     )
     # separate_xyz_003.X -> vector_math_011.Vector
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.003"].outputs[0],
-        beam_1.nodes["Vector Math.011"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.003"].outputs[0],
+        beam_segment_1.nodes["Vector Math.011"].inputs[1]
     )
     # transform_direction.Direction -> vector_math_012.Vector
-    beam_1.links.new(
-        beam_1.nodes["Transform Direction"].outputs[0],
-        beam_1.nodes["Vector Math.012"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Transform Direction"].outputs[0],
+        beam_segment_1.nodes["Vector Math.012"].inputs[1]
     )
     # separate_xyz_003.Y -> vector_math_012.Vector
-    beam_1.links.new(
-        beam_1.nodes["Separate XYZ.003"].outputs[1],
-        beam_1.nodes["Vector Math.012"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Separate XYZ.003"].outputs[1],
+        beam_segment_1.nodes["Vector Math.012"].inputs[0]
     )
     # vector_math_012.Vector -> vector_math_013.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.012"].outputs[0],
-        beam_1.nodes["Vector Math.013"].inputs[1]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.012"].outputs[0],
+        beam_segment_1.nodes["Vector Math.013"].inputs[1]
     )
     # vector_math_011.Vector -> vector_math_013.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.011"].outputs[0],
-        beam_1.nodes["Vector Math.013"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.011"].outputs[0],
+        beam_segment_1.nodes["Vector Math.013"].inputs[0]
     )
     # vector_math_013.Vector -> vector_math_006.Vector
-    beam_1.links.new(
-        beam_1.nodes["Vector Math.013"].outputs[0],
-        beam_1.nodes["Vector Math.006"].inputs[0]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Vector Math.013"].outputs[0],
+        beam_segment_1.nodes["Vector Math.006"].inputs[0]
     )
     # math_003.Value -> vector_math_006.Scale
-    beam_1.links.new(
-        beam_1.nodes["Math.003"].outputs[0],
-        beam_1.nodes["Vector Math.006"].inputs[3]
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Math.003"].outputs[0],
+        beam_segment_1.nodes["Vector Math.006"].inputs[3]
+    )
+    # store_named_attribute_001.Geometry -> set_position.Geometry
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Store Named Attribute.001"].outputs[0],
+        beam_segment_1.nodes["Set Position"].inputs[0]
+    )
+    # grid.Mesh -> store_named_attribute.Geometry
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Grid"].outputs[0],
+        beam_segment_1.nodes["Store Named Attribute"].inputs[0]
+    )
+    # store_named_attribute.Geometry -> store_named_attribute_001.Geometry
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Store Named Attribute"].outputs[0],
+        beam_segment_1.nodes["Store Named Attribute.001"].inputs[0]
+    )
+    # map_range.Result -> store_named_attribute_001.Value
+    beam_segment_1.links.new(
+        beam_segment_1.nodes["Map Range"].outputs[0],
+        beam_segment_1.nodes["Store Named Attribute.001"].inputs[3]
     )
 
-    return beam_1
+    return beam_segment_1
 
 def animated_texture_1_node_group():
     """Initialize Animated Texture node group"""
@@ -2214,7 +2244,7 @@ BUILDERS = {
     "Trans Alpha Shader": trans_alpha_shader_1_node_group,
     "Transparent Geometry": transparent_geometry_1_node_group,
     "GoldSrc Emissive": goldsrc_emissive_1_node_group,
-    "Beam Segment": beam_1_node_group,
+    "Beam Segment": beam_segment_1_node_group,
     "Animated Texture": animated_texture_1_node_group,
 }
 
@@ -2841,20 +2871,29 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
         nodes["Emission"].inputs[0]
     )
 
-def setup_beam_nodes(nodes, links, image, frame_count):
+def setup_beam_nodes(shader_nodetree, image, frame_count):
     # Node Image Texture
-    image_texture = nodes.new("ShaderNodeTexImage")
+    image_texture = shader_nodetree.nodes.new("ShaderNodeTexImage")
     image_texture.name = "Image Texture"
+    image_texture.extension = 'REPEAT'
     image_texture.image = image
-    image_texture.interpolation = "Closest"
-    image_texture.extension = "REPEAT"
+    image_texture.image_user.frame_current = 0
+    image_texture.image_user.frame_duration = 100
+    image_texture.image_user.frame_offset = 0
+    image_texture.image_user.frame_start = 1
+    image_texture.image_user.tile = 0
+    image_texture.image_user.use_auto_refresh = False
+    image_texture.image_user.use_cyclic = False
+    image_texture.interpolation = 'Closest'
+    image_texture.projection = 'FLAT'
+    image_texture.projection_blend = 0.0
 
-    # Node Group.001
-    sprite_frame_offset = new(nodes, "Sprite Frame Offset")
+    # Node Group
+    sprite_frame_offset = new(shader_nodetree.nodes, "Sprite Frame Offset")
     sprite_frame_offset.inputs[0].default_value = frame_count
 
     # Node Material Output
-    material_output = nodes.new("ShaderNodeOutputMaterial")
+    material_output = shader_nodetree.nodes.new("ShaderNodeOutputMaterial")
     material_output.name = "Material Output"
     material_output.is_active_output = True
     material_output.target = 'ALL'
@@ -2864,25 +2903,25 @@ def setup_beam_nodes(nodes, links, image, frame_count):
     material_output.inputs[3].default_value = 0.0
 
     # Node Emission
-    emission = nodes.new("ShaderNodeEmission")
+    emission = shader_nodetree.nodes.new("ShaderNodeEmission")
     emission.name = "Emission"
     # Strength
     emission.inputs[1].default_value = 5.0
 
     # Node Attribute
-    attribute = nodes.new("ShaderNodeAttribute")
+    attribute = shader_nodetree.nodes.new("ShaderNodeAttribute")
     attribute.name = "Attribute"
     attribute.attribute_name = "color"
     attribute.attribute_type = 'OBJECT'
 
     # Node Gamma
-    gamma = nodes.new("ShaderNodeGamma")
+    gamma = shader_nodetree.nodes.new("ShaderNodeGamma")
     gamma.name = "Gamma"
     # Gamma
     gamma.inputs[1].default_value = 2.200000047683716
 
     # Node Mix
-    mix = nodes.new("ShaderNodeMix")
+    mix = shader_nodetree.nodes.new("ShaderNodeMix")
     mix.name = "Mix"
     mix.blend_type = 'MULTIPLY'
     mix.clamp_factor = True
@@ -2893,97 +2932,401 @@ def setup_beam_nodes(nodes, links, image, frame_count):
     mix.inputs[0].default_value = 1.0
 
     # Node Transparent BSDF
-    transparent_bsdf = nodes.new("ShaderNodeBsdfTransparent")
+    transparent_bsdf = shader_nodetree.nodes.new("ShaderNodeBsdfTransparent")
     transparent_bsdf.name = "Transparent BSDF"
     # Color
     transparent_bsdf.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
 
     # Node Add Shader
-    add_shader = nodes.new("ShaderNodeAddShader")
+    add_shader = shader_nodetree.nodes.new("ShaderNodeAddShader")
     add_shader.name = "Add Shader"
 
+    # Node Mix Shader
+    mix_shader = shader_nodetree.nodes.new("ShaderNodeMixShader")
+    mix_shader.name = "Mix Shader"
+
+    # Node Attribute.001
+    attribute_001 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_001.name = "Attribute.001"
+    attribute_001.attribute_name = "brightness"
+    attribute_001.attribute_type = 'OBJECT'
+
     # Set locations
-    nodes["Image Texture"].location = (0.0, 0.0)
+    shader_nodetree.nodes["Image Texture"].location = (0.0, 0.0)
     sprite_frame_offset.location = (-160.0, -140.0)
-    nodes["Material Output"].location = (800.0, 180.0)
-    nodes["Emission"].location = (480.0, 180.0)
-    nodes["Attribute"].location = (0.0, 180.0)
-    nodes["Gamma"].location = (160.0, 180.0)
-    nodes["Mix"].location = (320.0, 180.0)
-    nodes["Transparent BSDF"].location = (480.0, 60.0)
-    nodes["Add Shader"].location = (640.0, 180.0)
+    shader_nodetree.nodes["Material Output"].location = (960.0, 180.0)
+    shader_nodetree.nodes["Emission"].location = (480.0, 180.0)
+    shader_nodetree.nodes["Attribute"].location = (0.0, 180.0)
+    shader_nodetree.nodes["Gamma"].location = (160.0, 180.0)
+    shader_nodetree.nodes["Mix"].location = (320.0, 180.0)
+    shader_nodetree.nodes["Transparent BSDF"].location = (480.0, 60.0)
+    shader_nodetree.nodes["Add Shader"].location = (640.0, 180.0)
+    shader_nodetree.nodes["Mix Shader"].location = (800.0, 180.0)
+    shader_nodetree.nodes["Attribute.001"].location = (640.0, 360.0)
 
     # Set dimensions
-    nodes["Image Texture"].width  = 240.0
-    nodes["Image Texture"].height = 100.0
+    shader_nodetree.nodes["Image Texture"].width  = 240.0
+    shader_nodetree.nodes["Image Texture"].height = 100.0
 
     sprite_frame_offset.width  = 140.0
     sprite_frame_offset.height = 100.0
 
-    nodes["Material Output"].width  = 140.0
-    nodes["Material Output"].height = 100.0
+    shader_nodetree.nodes["Material Output"].width  = 140.0
+    shader_nodetree.nodes["Material Output"].height = 100.0
 
-    nodes["Emission"].width  = 140.0
-    nodes["Emission"].height = 100.0
+    shader_nodetree.nodes["Emission"].width  = 140.0
+    shader_nodetree.nodes["Emission"].height = 100.0
 
-    nodes["Attribute"].width  = 140.0
-    nodes["Attribute"].height = 100.0
+    shader_nodetree.nodes["Attribute"].width  = 140.0
+    shader_nodetree.nodes["Attribute"].height = 100.0
 
-    nodes["Gamma"].width  = 140.0
-    nodes["Gamma"].height = 100.0
+    shader_nodetree.nodes["Gamma"].width  = 140.0
+    shader_nodetree.nodes["Gamma"].height = 100.0
 
-    nodes["Mix"].width  = 140.0
-    nodes["Mix"].height = 100.0
+    shader_nodetree.nodes["Mix"].width  = 140.0
+    shader_nodetree.nodes["Mix"].height = 100.0
 
-    nodes["Transparent BSDF"].width  = 140.0
-    nodes["Transparent BSDF"].height = 100.0
+    shader_nodetree.nodes["Transparent BSDF"].width  = 140.0
+    shader_nodetree.nodes["Transparent BSDF"].height = 100.0
 
-    nodes["Add Shader"].width  = 140.0
-    nodes["Add Shader"].height = 100.0
+    shader_nodetree.nodes["Add Shader"].width  = 140.0
+    shader_nodetree.nodes["Add Shader"].height = 100.0
+
+    shader_nodetree.nodes["Mix Shader"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.001"].width  = 140.0
+    shader_nodetree.nodes["Attribute.001"].height = 100.0
 
 
     # Initialize shader_nodetree links
 
-    # group_001.Vector -> image_texture.Vector
-    links.new(
+    # group.Vector -> image_texture.Vector
+    shader_nodetree.links.new(
         sprite_frame_offset.outputs[0],
-        nodes["Image Texture"].inputs[0]
+        shader_nodetree.nodes["Image Texture"].inputs[0]
     )
     # attribute.Color -> gamma.Color
-    links.new(
-        nodes["Attribute"].outputs[0],
-        nodes["Gamma"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute"].outputs[0],
+        shader_nodetree.nodes["Gamma"].inputs[0]
     )
     # gamma.Color -> mix.A
-    links.new(
-        nodes["Gamma"].outputs[0],
-        nodes["Mix"].inputs[6]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Gamma"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[6]
     )
     # image_texture.Color -> mix.B
-    links.new(
-        nodes["Image Texture"].outputs[0],
-        nodes["Mix"].inputs[7]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[7]
     )
     # mix.Result -> emission.Color
-    links.new(
-        nodes["Mix"].outputs[2],
-        nodes["Emission"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Emission"].inputs[0]
     )
     # emission.Emission -> add_shader.Shader
-    links.new(
-        nodes["Emission"].outputs[0],
-        nodes["Add Shader"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Emission"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[0]
     )
     # transparent_bsdf.BSDF -> add_shader.Shader
-    links.new(
-        nodes["Transparent BSDF"].outputs[0],
-        nodes["Add Shader"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[1]
+    )
+    # mix_shader.Shader -> material_output.Surface
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader"].outputs[0],
+        shader_nodetree.nodes["Material Output"].inputs[0]
+    )
+    # attribute_001.Factor -> mix_shader.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.001"].outputs[2],
+        shader_nodetree.nodes["Mix Shader"].inputs[0]
+    )
+    # transparent_bsdf.BSDF -> mix_shader.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF"].outputs[0],
+        shader_nodetree.nodes["Mix Shader"].inputs[1]
+    )
+    # add_shader.Shader -> mix_shader.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Add Shader"].outputs[0],
+        shader_nodetree.nodes["Mix Shader"].inputs[2]
+    )
+
+
+def setup_beamfollow_nodes(shader_nodetree, image, frame_count):
+    # Node Image Texture
+    image_texture = shader_nodetree.nodes.new("ShaderNodeTexImage")
+    image_texture.name = "Image Texture"
+    image_texture.extension = 'REPEAT'
+    image_texture.image = image
+    image_texture.image_user.frame_current = 0
+    image_texture.image_user.frame_duration = 100
+    image_texture.image_user.frame_offset = 0
+    image_texture.image_user.frame_start = 1
+    image_texture.image_user.tile = 0
+    image_texture.image_user.use_auto_refresh = False
+    image_texture.image_user.use_cyclic = False
+    image_texture.interpolation = 'Closest'
+    image_texture.projection = 'FLAT'
+    image_texture.projection_blend = 0.0
+
+    # Node Group
+    sprite_frame_offset = new(shader_nodetree.nodes, "Sprite Frame Offset")
+    sprite_frame_offset.inputs[0].default_value = frame_count
+
+    # Node Material Output
+    material_output = shader_nodetree.nodes.new("ShaderNodeOutputMaterial")
+    material_output.name = "Material Output"
+    material_output.is_active_output = True
+    material_output.target = 'ALL'
+    # Displacement
+    material_output.inputs[2].default_value = (0.0, 0.0, 0.0)
+    # Thickness
+    material_output.inputs[3].default_value = 0.0
+
+    # Node Emission
+    emission = shader_nodetree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    # Strength
+    emission.inputs[1].default_value = 5.0
+
+    # Node Attribute
+    attribute = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute.name = "Attribute"
+    attribute.attribute_name = "color"
+    attribute.attribute_type = 'OBJECT'
+
+    # Node Gamma
+    gamma = shader_nodetree.nodes.new("ShaderNodeGamma")
+    gamma.name = "Gamma"
+    # Gamma
+    gamma.inputs[1].default_value = 2.200000047683716
+
+    # Node Mix
+    mix = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'MULTIPLY'
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix.inputs[0].default_value = 1.0
+
+    # Node Transparent BSDF
+    transparent_bsdf = shader_nodetree.nodes.new("ShaderNodeBsdfTransparent")
+    transparent_bsdf.name = "Transparent BSDF"
+    # Color
+    transparent_bsdf.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+
+    # Node Add Shader
+    add_shader = shader_nodetree.nodes.new("ShaderNodeAddShader")
+    add_shader.name = "Add Shader"
+
+    # Node Attribute.001
+    attribute_001 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_001.name = "Attribute.001"
+    attribute_001.attribute_name = "EdgeMap"
+    attribute_001.attribute_type = 'GEOMETRY'
+
+    # Node Mix.001
+    mix_001 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_001.name = "Mix.001"
+    mix_001.blend_type = 'MULTIPLY'
+    mix_001.clamp_factor = False
+    mix_001.clamp_result = False
+    mix_001.data_type = 'RGBA'
+    mix_001.factor_mode = 'UNIFORM'
+    # B_Color
+    mix_001.inputs[7].default_value = (0.0, 0.0, 0.0, 1.0)
+
+    # Node Mix.002
+    mix_002 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_002.name = "Mix.002"
+    mix_002.blend_type = 'MIX'
+    mix_002.clamp_factor = False
+    mix_002.clamp_result = False
+    mix_002.data_type = 'FLOAT'
+    mix_002.factor_mode = 'UNIFORM'
+
+    # Node Attribute.002
+    attribute_002 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_002.name = "Attribute.002"
+    attribute_002.attribute_name = "brightness_start"
+    attribute_002.attribute_type = 'OBJECT'
+
+    # Node Attribute.003
+    attribute_003 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_003.name = "Attribute.003"
+    attribute_003.attribute_name = "brightness_end"
+    attribute_003.attribute_type = 'OBJECT'
+
+    # Node Math
+    math = shader_nodetree.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'SUBTRACT'
+    math.use_clamp = False
+    # Value
+    math.inputs[0].default_value = 1.0
+
+    # Node Gamma.001
+    gamma_001 = shader_nodetree.nodes.new("ShaderNodeGamma")
+    gamma_001.name = "Gamma.001"
+    # Gamma
+    gamma_001.inputs[1].default_value = 2.200000047683716
+
+    # Set locations
+    shader_nodetree.nodes["Image Texture"].location = (0.0, 0.0)
+    sprite_frame_offset.location = (-160.0, -140.0)
+    shader_nodetree.nodes["Material Output"].location = (960.0, 180.0)
+    shader_nodetree.nodes["Emission"].location = (640.0, 180.0)
+    shader_nodetree.nodes["Attribute"].location = (0.0, 180.0)
+    shader_nodetree.nodes["Gamma"].location = (160.0, 180.0)
+    shader_nodetree.nodes["Mix"].location = (320.0, 180.0)
+    shader_nodetree.nodes["Transparent BSDF"].location = (640.0, 60.0)
+    shader_nodetree.nodes["Add Shader"].location = (800.0, 180.0)
+    shader_nodetree.nodes["Attribute.001"].location = (-160.0, 540.0)
+    shader_nodetree.nodes["Mix.001"].location = (480.0, 180.0)
+    shader_nodetree.nodes["Mix.002"].location = (0.0, 360.0)
+    shader_nodetree.nodes["Attribute.002"].location = (-160.0, 360.0)
+    shader_nodetree.nodes["Attribute.003"].location = (-160.0, 180.0)
+    shader_nodetree.nodes["Math"].location = (320.0, 360.0)
+    shader_nodetree.nodes["Gamma.001"].location = (160.0, 360.0)
+
+    # Set dimensions
+    shader_nodetree.nodes["Image Texture"].width  = 240.0
+    shader_nodetree.nodes["Image Texture"].height = 100.0
+
+    sprite_frame_offset.width  = 140.0
+    sprite_frame_offset.height = 100.0
+
+    shader_nodetree.nodes["Material Output"].width  = 140.0
+    shader_nodetree.nodes["Material Output"].height = 100.0
+
+    shader_nodetree.nodes["Emission"].width  = 140.0
+    shader_nodetree.nodes["Emission"].height = 100.0
+
+    shader_nodetree.nodes["Attribute"].width  = 140.0
+    shader_nodetree.nodes["Attribute"].height = 100.0
+
+    shader_nodetree.nodes["Gamma"].width  = 140.0
+    shader_nodetree.nodes["Gamma"].height = 100.0
+
+    shader_nodetree.nodes["Mix"].width  = 140.0
+    shader_nodetree.nodes["Mix"].height = 100.0
+
+    shader_nodetree.nodes["Transparent BSDF"].width  = 140.0
+    shader_nodetree.nodes["Transparent BSDF"].height = 100.0
+
+    shader_nodetree.nodes["Add Shader"].width  = 140.0
+    shader_nodetree.nodes["Add Shader"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.001"].width  = 140.0
+    shader_nodetree.nodes["Attribute.001"].height = 100.0
+
+    shader_nodetree.nodes["Mix.001"].width  = 140.0
+    shader_nodetree.nodes["Mix.001"].height = 100.0
+
+    shader_nodetree.nodes["Mix.002"].width  = 140.0
+    shader_nodetree.nodes["Mix.002"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.002"].width  = 140.0
+    shader_nodetree.nodes["Attribute.002"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.003"].width  = 140.0
+    shader_nodetree.nodes["Attribute.003"].height = 100.0
+
+    shader_nodetree.nodes["Math"].width  = 140.0
+    shader_nodetree.nodes["Math"].height = 100.0
+
+    shader_nodetree.nodes["Gamma.001"].width  = 140.0
+    shader_nodetree.nodes["Gamma.001"].height = 100.0
+
+
+    # Initialize shader_nodetree links
+
+    # attribute.Color -> gamma.Color
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute"].outputs[0],
+        shader_nodetree.nodes["Gamma"].inputs[0]
+    )
+    # gamma.Color -> mix.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Gamma"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[6]
+    )
+    # image_texture.Color -> mix.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[7]
+    )
+    # mix_001.Result -> emission.Color
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.001"].outputs[2],
+        shader_nodetree.nodes["Emission"].inputs[0]
+    )
+    # emission.Emission -> add_shader.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Emission"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[0]
+    )
+    # transparent_bsdf.BSDF -> add_shader.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[1]
+    )
+    # group.Vector -> image_texture.Vector
+    shader_nodetree.links.new(
+        sprite_frame_offset.outputs[0],
+        shader_nodetree.nodes["Image Texture"].inputs[0]
+    )
+    # mix.Result -> mix_001.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Mix.001"].inputs[6]
+    )
+    # attribute_001.Factor -> mix_002.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.001"].outputs[2],
+        shader_nodetree.nodes["Mix.002"].inputs[0]
+    )
+    # attribute_002.Factor -> mix_002.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[2],
+        shader_nodetree.nodes["Mix.002"].inputs[2]
+    )
+    # attribute_003.Factor -> mix_002.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.003"].outputs[2],
+        shader_nodetree.nodes["Mix.002"].inputs[3]
     )
     # add_shader.Shader -> material_output.Surface
-    links.new(
-        nodes["Add Shader"].outputs[0],
-        nodes["Material Output"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Add Shader"].outputs[0],
+        shader_nodetree.nodes["Material Output"].inputs[0]
     )
+    # mix_002.Result -> gamma_001.Color
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.002"].outputs[0],
+        shader_nodetree.nodes["Gamma.001"].inputs[0]
+    )
+    # gamma_001.Color -> math.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Gamma.001"].outputs[0],
+        shader_nodetree.nodes["Math"].inputs[1]
+    )
+    # math.Value -> mix_001.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math"].outputs[0],
+        shader_nodetree.nodes["Mix.001"].inputs[0]
+    )
+
+    return shader_nodetree
 
 def setup_transparent_bsp_nodes(nodes, links, image):
     # Node Principled BSDF

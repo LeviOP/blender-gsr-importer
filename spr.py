@@ -237,15 +237,31 @@ class Spr:
             return bpy.data.materials[material_name]
 
         material = bpy.data.materials.new(material_name)
-        nodes = material.node_tree.nodes
-        links = material.node_tree.links
+        node_tree = material.node_tree
 
-        nodes.clear()
+        node_tree.nodes.clear()
 
         image = self.ensure_atlas(name)
         frame_count = len(self.frames)
 
-        gsr_nodes.setup_beam_nodes(nodes, links, image, frame_count)
+        gsr_nodes.setup_beam_nodes(node_tree, image, frame_count)
+
+        return material
+
+    def ensure_beamfollow_material(self, name: str):
+        material_name = "beamfollow_" + name
+        if material_name in bpy.data.materials:
+            return bpy.data.materials[material_name]
+
+        material = bpy.data.materials.new(material_name)
+        node_tree = material.node_tree
+
+        node_tree.nodes.clear()
+
+        image = self.ensure_atlas(name)
+        frame_count = len(self.frames)
+
+        gsr_nodes.setup_beamfollow_nodes(node_tree, image, frame_count)
 
         return material
 

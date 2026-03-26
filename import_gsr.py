@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 import math
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import bmesh
 from mathutils import Euler, Matrix, Vector
@@ -21,6 +21,7 @@ from .mdl import Sequence, SequenceFlags, SequenceMotionFlags
 from .spr import SpriteType
 from .wad import Wad
 from .tga import Tga
+from .animation import ActionContext, FCurveBuffer, FCurveBufferGroup
 
 class ObjectType(IntEnum):
     Camera = 0
@@ -144,16 +145,6 @@ class GsrReader(BinaryReader):
             case PlayerField.BottomColor:
                 return (PlayerField.BottomColor, self.i32())
 
-# def goldsrc_to_blender_location(goldsrc_pos: tuple[float, float, float], scale: float) -> tuple[float, float, float]:
-#     x, y, z = goldsrc_pos
-#
-#     # blender_x = -y * scale
-#     # blender_y = x * scale
-#     # blender_z = z * scale
-#
-#     # return (blender_x, blender_y, blender_z)
-#     return (x * scale, y * scale, z * scale)
-
 def goldsrc_to_blender_angles(goldsrc_angles):
     pitch, yaw, roll = goldsrc_angles
 
@@ -163,7 +154,6 @@ def goldsrc_to_blender_angles(goldsrc_angles):
 
     return (rx, ry, rz)
 
-# TODO: just use above and do small math at call site
 def goldsrc_to_blender_angles_camera(goldsrc_angles):
     pitch, yaw, roll = goldsrc_angles
 
@@ -179,9 +169,6 @@ def fov_to_focal_length(fov_deg, size):
 
 
 class Camera:
-    obj_fcurves = {}
-    data_fcurves = {}
-
     def __init__(self, br: GsrReader, blender_frame: int, scale: float):
         self.scale = scale
 
@@ -193,31 +180,19 @@ class Camera:
         # i think we can go lower if we want :P
         cam_data.clip_start = 0.001
 
-        obj_anim_data = cam_obj.animation_data_create()
-        obj_action = bpy.data.actions.new(name=f"{cam_obj.name}_Action")
-        obj_slot = obj_action.slots.new(id_type="OBJECT", name=cam_obj.name)
-        obj_anim_data.action = obj_action
-        obj_anim_data.action_slot = obj_slot
-        obj_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(obj_action, obj_slot) # type: ignore
+        obj_action = ActionContext(cam_obj)
+        cam_action = ActionContext(cam_data)
 
-        cam_anim_data = cam_data.animation_data_create()
-        data_action = bpy.data.actions.new(name=f"{cam_obj.name}_Action")
-        data_slot = data_action.slots.new(id_type="CAMERA", name=cam_data.name)
-        cam_anim_data.action = data_action
-        cam_anim_data.action_slot = data_slot
-        data_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(data_action, data_slot) # type: ignore
+        # No runtime-free way to assert the types of keys statically,
+        # so we type as Any to avoid headache. I hate python :-)
+        self.fcurves: dict[str, Any] = {}
 
-        self.obj_fcurves["location"] = []
-        for i in range(3):
-            self.obj_fcurves["location"].append(obj_cb.fcurves.new("location", index=i))
-
-        self.obj_fcurves["rotation_euler"] = []
-        for i in range(3):
-            self.obj_fcurves["rotation_euler"].append(obj_cb.fcurves.new("rotation_euler", index=i))
-
-        self.data_fcurves["lens"] = data_cb.fcurves.new("lens")
+        self.fcurves["location"] = obj_action.fcurves("location", 3)
+        self.fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
+        self.fcurves["lens"] = cam_action.fcurve("lens")
 
         self.object = cam_obj
+
         self.update(br, blender_frame)
 
     def update(self, br: GsrReader, blender_frame: int):
@@ -228,30 +203,23 @@ class Camera:
                 case (ObjectField.Origin, location):
                     self.origin = location
                     location = Vector(location) * self.scale
-                    location_fcurves = self.obj_fcurves["location"]
-                    for i in range(3):
-                        location_fcurves[i].keyframe_points.insert(blender_frame, location[i]).interpolation = "CONSTANT"
+                    self.fcurves["location"].insert(blender_frame, location)
 
                 case (ObjectField.Angles, angles):
                     angles = goldsrc_to_blender_angles_camera(angles)
-                    rotation_fcurves = self.obj_fcurves["rotation_euler"]
-                    for i in range(3):
-                        rotation_fcurves[i].keyframe_points.insert(blender_frame, angles[i]).interpolation = "CONSTANT"
+                    self.fcurves["rotation_euler"].insert(blender_frame, angles)
 
                 case (ObjectField.Fov, fov):
-                    self.data_fcurves["lens"].keyframe_points.insert(
+                    self.fcurves["lens"].insert(
                         blender_frame,
                         fov_to_focal_length(fov, self.object.data.sensor_width) # type: ignore
-                    ).interpolation = "CONSTANT"
+                    )
 
 @dataclass
 class PlayerInfo:
     model: str
     topcolor: int
     bottomcolor: int
-    gaitsequence: int
-    gaitframe: float
-    gaityaw: float
 
     def update(self, br: GsrReader):
         fields = br.player_fields()
@@ -264,12 +232,6 @@ class PlayerInfo:
                     self.topcolor = topcolor
                 case (PlayerField.BottomColor, bottomcolor):
                     self.topcolor = bottomcolor
-                case (PlayerField.GaitSequence, gaitsequence):
-                    self.gaitsequence = gaitsequence
-                case (PlayerField.GaitFrame, gaitframe):
-                    self.gaitframe = gaitframe
-                case (PlayerField.GaitYaw, gaityaw):
-                    self.gaityaw = gaityaw
 
 class MoveType(IntEnum):
     NONE          = 0
@@ -318,64 +280,55 @@ class RenderFx(IntEnum):
     ClampMinScale = 20     # Keep this sprite from getting very small (SPRITES only!)
     LightMultiplier = 21   #CTM !!!CZERO added to tell the studiorender that the value in iuser2 is a lightmultiplier
 
+@dataclass
+class PlayerModel:
+    name: Optional[str] = None
+    model: Optional[CachedModel] = None
+
 class Entity:
     prev_origin: Optional[tuple[float, float, float]] = None
     prev_angles: Optional[tuple[float, float, float]] = None
     prev_animtime: Optional[float] = None
+    prev_model: Optional[CachedModel] = None
     prev_weaponmodel: Optional[CachedModel] = None
     prev_frame: Optional[float] = None
     prev_scale: Optional[float] = None
     prev_r_blend: Optional[float] = None
 
     weaponmodel: Optional[CachedModel] = None
-    # maybe we should set these... but they should always be set on first frame according to recorder
-    # draw = True
-    # sequence = 0
-    # frame = 0.0
-    # framerate = 1
-    # body = 0
-    # movetype: MoveType = MoveType(0)
 
     prev_gaitorigin: tuple[float, float, float] = (0.0, 0.0, 0.0)
     gaityaw: float = 0.0
     gaitframe: float = 0.0
 
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, mod: Mod, players: list[PlayerInfo]):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, mod: Mod):
         self.blender_scale = scale
+        # for weaponmodel and submodels (player models)
+        self.collection = collection
         self.mod = mod
 
         model_index: int = br.u32()
-        self.entity_model = mod[model_index]
-        self.model = self.entity_model
+        self.model = mod[model_index]
+        # currententity->number - 1
         self.player_index = br.u8()
+        # currententity->player
         self.player = self.player_index != 255
 
-        # if True:
-        #     print("new guy")
-        #     self.update(br, blender_frame, mod)
-        #     return
+        # player-specific stuff
+        # FIXME: maybe only use this on players?
+        self.weaponmodel_cache: dict[CachedModel, tuple[FCurveBuffer, dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]] = {}
+        # DM_PlayerState[r_playerindex]
+        self.player_model = PlayerModel()
+        self.player_model_cache: dict[CachedModel, tuple[bpy.types.Object, FCurveBuffer, dict[str, FCurveBuffer], dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]] = {}
 
-        self.weapon_armatures: dict[CachedModel, tuple[dict[str, dict], dict[str, Matrix]]] = {}
-        self.weapon_fcurves: dict[CachedModel, bpy.types.FCurve] = {}
-
-        # TODO: handle updates to playermodel somewhere! I guess in every single render frame...
-        if self.player:
-            self.player_info = players[self.player_index]
-            model_name = self.player_info.model
-            model = self.mod.for_name(f"models/player/{model_name}/{model_name}.mdl", False)
-            if model is None:
-                print(f"couldn't load player model!: {model_name}")
-            else:
-                self.model = model
-
-        # print(f"new entity: {model_index} {self.model.name}")
-
+        # the model that we render changes at render time, so don't create it if we don't need to
+        # not necessary to do this for anyone but players
+        # if not self.player:
         # REVISIT: wish we could just get unlinked thing back from creation functions
         self.object = self.model.create_object(self.mod, self.blender_scale, collection, no_depth_collection)
-        # for weaponmodel
-        self.collection = collection
 
-        # HACK HACK HACK
+
+        # HACKHACK: probably should just mark this on the engine side...
         if self.model.type == ModelType.STUDIO and "/v_" in self.model.name:
             viewmodel_collection.objects.link(self.object)
             for child in self.object.children:
@@ -384,34 +337,23 @@ class Entity:
                 viewmodel_collection.objects.link(child)
 
 
-        obj_anim_data = self.object.animation_data_create()
-        obj_action = bpy.data.actions.new(name=f"{self.object.name}_Action")
-        obj_slot = obj_action.slots.new(id_type="OBJECT", name=self.object.name)
-        obj_anim_data.action = obj_action
-        obj_anim_data.action_slot = obj_slot
+        obj_action = ActionContext(self.object)
 
-        obj_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(obj_action, obj_slot) # type: ignore
+        # see camera for why Any
+        self.obj_fcurves: dict[str, Any] = {}
 
-        self.obj_fcurves = {}
-
-        self.obj_fcurves["location"] = []
-        for i in range(3):
-            self.obj_fcurves["location"].append(obj_cb.fcurves.new("location", index=i))
+        self.obj_fcurves["location"] = obj_action.fcurves("location", 3)
 
         if self.model.type == ModelType.SPRITE:
-            self.obj_fcurves["scale"] = []
-            for i in range(3):
-                self.obj_fcurves["scale"].append(obj_cb.fcurves.new("scale", index=i))
+            self.obj_fcurves["scale"] = obj_action.fcurves("scale", 3)
 
         if self.model.type == ModelType.STUDIO or self.model.type == ModelType.BRUSH or (self.model.type == ModelType.SPRITE and self.model.spr.header.type == SpriteType.PARALLEL_ORIENTED):
-            self.obj_fcurves["rotation_euler"] = []
-            for i in range(3):
-                self.obj_fcurves["rotation_euler"].append(obj_cb.fcurves.new("rotation_euler", index=i))
+            self.obj_fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
 
         self.object["draw"] = False
-        self.obj_fcurves["draw"] = obj_cb.fcurves.new('["draw"]')
+        self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
         # hide by default
-        self.obj_fcurves["draw"].keyframe_points.insert(1, False).interpolation = "CONSTANT"
+        self.obj_fcurves["draw"].insert(1, False)
 
         for path in ["hide_render", "hide_viewport"]:
             visibility_driver: bpy.types.Driver = self.object.driver_add(path).driver # type: ignore
@@ -426,63 +368,126 @@ class Entity:
             visibility_driver.expression = "not draw"
 
         if self.model.type == ModelType.SPRITE:
-            self.obj_fcurves['["frame"]'] = obj_cb.fcurves.new('["frame"]')
+            # already exists on sprite object
+            self.obj_fcurves["frame"] = obj_action.fcurve('["frame"]')
 
-        if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
-            self.obj_fcurves['["rendermode"]'] = obj_cb.fcurves.new('["rendermode"]')
-            self.obj_fcurves['["r_blend"]'] = obj_cb.fcurves.new('["r_blend"]')
-            self.obj_fcurves['["rendercolor"]'] = []
-            for i in range(3):
-                self.obj_fcurves['["rendercolor"]'].append(obj_cb.fcurves.new('["rendercolor"]', index = i))
-
+        # FIXME: combine with above?
         if self.model.type == ModelType.BRUSH:
             self.object["frame"] = 0
-            self.obj_fcurves['["frame"]'] = obj_cb.fcurves.new('["frame"]')
+            self.obj_fcurves["frame"] = obj_action.fcurve('["frame"]')
+
+        if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
+            # FIXME: these don't all exist on studio models!
+            self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
+            self.obj_fcurves["r_blend"] = obj_action.fcurve('["r_blend"]')
+            self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
 
         if self.model.type == ModelType.STUDIO:
-            self._mesh_fcurves = {}
+            self.bone_fcurves_map, self.bone_local_rest_matrix_inverse_map = self.setup_armature(self.object, obj_action)
+
+            self.object["active_model"] = True
+            self.active_model_fcurve = obj_action.fcurve('["active_model"]')
+            self.active_model_fcurve.insert(1, False)
+            self.active_model_fcurve.insert(blender_frame, True)
+
+            self.body_part_fcurves: dict[str, FCurveBuffer] = {}
             for child in self.object.children:
                 if child.type != "MESH":
                     continue
 
-                anim_data = child.animation_data_create()
-                action = bpy.data.actions.new(name=f"{child.name}_Action")
-                slot = action.slots.new(id_type="OBJECT", name=child.name)
-                anim_data.action = action
-                anim_data.action_slot = slot
-                child_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(action, slot) # type: ignore
-                fcurve = child_cb.fcurves.new('["body_hidden"]')
-                fcurve.keyframe_points.insert(1, True).interpolation = "CONSTANT"
-                self._mesh_fcurves[child.name] = fcurve
+                child_action = ActionContext(child)
+                fcurve = child_action.fcurve('["body_hidden"]')
+                fcurve.insert(1, True)
+                self.body_part_fcurves[child.name] = fcurve
 
-            self.bone_fcurves = {}
-            # _rest_local_inv[bone_name] = inverse of the bone's local rest matrix.
-            # After armature_apply(), bone.matrix_local is the baked rest pose.
-            # matrix_basis = rest_local_inv @ animated_local lets us write the
-            # correct pose without touching Blender's evaluator at all.
-            self._rest_local_inv = {}
-            armature_data: bpy.types.Armature = self.object.data # type: ignore
-            for pose_bone in self.object.pose.bones: # type: ignore
-                pose_bone: bpy.types.PoseBone
-                pose_bone.rotation_mode = 'QUATERNION'
-                bone_name = pose_bone.name
-                bone_string = f"pose.bones[\"{bone_name}\"]"
-                loc_fcs = []
-                rot_fcs = []
-                for i in range(3):
-                    loc_fcs.append(obj_cb.fcurves.new(bone_string + ".location", index=i))
-                for i in range(4):  # w, x, y, z
-                    rot_fcs.append(obj_cb.fcurves.new(bone_string + ".rotation_quaternion", index=i))
-                self.bone_fcurves[bone_name] = {'loc': loc_fcs, 'rot': rot_fcs}
-                bl_bone = armature_data.bones[bone_name]
-                if pose_bone.parent:
-                    parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
-                    local_rest = parent_world.inverted() @ bl_bone.matrix_local
-                else:
-                    local_rest = bl_bone.matrix_local.copy()
-                self._rest_local_inv[bone_name] = local_rest.inverted()
+                child["body_hidden"] = True
+                for path in ["hide_render", "hide_viewport"]:
+                    visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
+                    visibility_driver.type = "SCRIPTED"
+
+                    entity_draw_driver_var = visibility_driver.variables.new()
+                    entity_draw_driver_var.name = "entity_draw"
+                    entity_draw_driver_var.type = "SINGLE_PROP"
+                    entity_draw_driver_var.targets[0].id = self.object
+                    entity_draw_driver_var.targets[0].data_path = '["draw"]'
+
+                    parent_active_model_driver_var = visibility_driver.variables.new()
+                    parent_active_model_driver_var.name = "parent_active_model"
+                    parent_active_model_driver_var.type = "SINGLE_PROP"
+                    parent_active_model_driver_var.targets[0].id = self.object
+                    parent_active_model_driver_var.targets[0].data_path = '["active_model"]'
+
+                    body_hidden_driver_var = visibility_driver.variables.new()
+                    body_hidden_driver_var.name = "body_hidden"
+                    body_hidden_driver_var.type = "SINGLE_PROP"
+                    body_hidden_driver_var.targets[0].id = child
+                    body_hidden_driver_var.targets[0].data_path = '["body_hidden"]'
+
+                    visibility_driver.expression = "not entity_draw or not parent_active_model or body_hidden"
+            # self.mesh_fcurves: dict[str, FCurveBuffer] = {}
+            # for child in self.object.children:
+            #     if child.type != "MESH":
+            #         continue
+            #
+            #     child_action = ActionContext(child)
+            #     fcurve = child_action.fcurve('["body_hidden"]')
+            #     fcurve.insert(1, True)
+            #     self.mesh_fcurves[child.name] = fcurve
+            #
+            # self.bone_fcurves: dict[str, dict[str, list[FCurveBuffer]]] = {}
+            # # _rest_local_inv[bone_name] = inverse of the bone's local rest matrix.
+            # # After armature_apply(), bone.matrix_local is the baked rest pose.
+            # # matrix_basis = rest_local_inv @ animated_local lets us write the
+            # # correct pose without touching Blender's evaluator at all.
+            # self.bone_local_rest_matrix_inverse_map = {}
+            # armature_data: bpy.types.Armature = self.object.data # type: ignore
+            # for pose_bone in self.object.pose.bones: # type: ignore
+            #     pose_bone: bpy.types.PoseBone
+            #     pose_bone.rotation_mode = 'QUATERNION'
+            #     bone_name = pose_bone.name
+            #     bone_string = f"pose.bones[\"{bone_name}\"]"
+            #     loc_fcs = []
+            #     rot_fcs = []
+            #     # FIXME: this needs to be changed on the other end!!!!!!
+            #     for i in range(3):
+            #         loc_fcs.append(obj_action.fcurve(bone_string + ".location", index=i))
+            #     for i in range(4):  # w, x, y, z
+            #         rot_fcs.append(obj_action.fcurve(bone_string + ".rotation_quaternion", index=i))
+            #     self.bone_fcurves[bone_name] = {'loc': loc_fcs, 'rot': rot_fcs}
+            #     bl_bone = armature_data.bones[bone_name]
+            #     if pose_bone.parent:
+            #         parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
+            #         local_rest = parent_world.inverted() @ bl_bone.matrix_local
+            #     else:
+            #         local_rest = bl_bone.matrix_local.copy()
+            #     self.bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
 
         self.update(br, blender_frame)
+
+    def setup_armature(self, obj: bpy.types.Object, obj_action: ActionContext) -> tuple[dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]:
+        bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]] = {}
+        bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
+
+        armature_data: bpy.types.Armature = obj.data # type: ignore
+        for pose_bone in obj.pose.bones: # type: ignore
+            pose_bone: bpy.types.PoseBone
+            pose_bone.rotation_mode = "QUATERNION"
+            bone_name = pose_bone.name
+            bone_string = f"pose.bones[\"{bone_name}\"]"
+            # FIXME: custom dataclass or inline definintion? tuple instead?
+            bone_fcurves_map[bone_name] = {}
+            bone_fcurves_map[bone_name]["location"] = obj_action.fcurves(bone_string + ".location", 3)
+            bone_fcurves_map[bone_name]["rotation_quaternion"] = obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
+            data_bone: bpy.types.Bone = armature_data.bones[bone_name]
+            if pose_bone.parent:
+                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
+                local_rest = parent_world.inverted() @ data_bone.matrix_local
+            else:
+                local_rest = data_bone.matrix_local.copy()
+            bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
+
+        return bone_fcurves_map, bone_local_rest_matrix_inverse_map
+
 
     def update(self, br: GsrReader, blender_frame: int):
         old_animtime = getattr(self, "animtime", None)
@@ -503,11 +508,12 @@ class Entity:
 
                 case (ObjectField.Draw, draw):
                     self.draw = draw
-                    self.obj_fcurves["draw"].keyframe_points.insert(blender_frame, self.draw).interpolation = "CONSTANT"
-                    if self.weaponmodel is not None:
-                        fcurve = self.weapon_fcurves.get(self.weaponmodel)
-                        if fcurve is not None:
-                            fcurve.keyframe_points.insert(blender_frame, self.draw).interpolation = "CONSTANT"
+                    self.obj_fcurves["draw"].insert(blender_frame, self.draw)
+                    # we don't need to do this because weaponmodels meshes know when to draw now :)
+                    # if self.weaponmodel is not None:
+                    #     cached_weaponmodel = self.weaponmodel_cache.get(self.weaponmodel)
+                    #     if cached_weaponmodel is not None:
+                    #         cached_weaponmodel[0].insert(blender_frame, self.draw)
 
                 case (ObjectField.Sequence, sequence):
                     self.sequence = sequence
@@ -530,20 +536,19 @@ class Entity:
                 case (ObjectField.RenderMode, rendermode):
                     self.rendermode = rendermode
                     if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
-                        self.obj_fcurves['["rendermode"]'].keyframe_points.insert(blender_frame, rendermode).interpolation = "CONSTANT"
+                        self.obj_fcurves["rendermode"].insert(blender_frame, rendermode)
 
                 case (ObjectField.RenderAmt, renderamt):
                     self.renderamt = renderamt
-                    # if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
-                    #     self.obj_fcurves['["renderamt"]'].keyframe_points.insert(blender_frame, renderamt).interpolation = "CONSTANT"
 
                 case (ObjectField.RenderColor, rendercolor):
                     self.rendercolor = rendercolor
                     if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
                         if all(c == 0.0 for c in rendercolor):
-                            rendercolor = (255.0, 255.0, 255.0)
-                        for i in range(3):
-                            self.obj_fcurves['["rendercolor"]'][i].keyframe_points.insert(blender_frame, rendercolor[i] / 255.0).interpolation = "CONSTANT"
+                            rendercolor = (1.0, 1.0, 1.0)
+                        else:
+                            rendercolor = (rendercolor[0] / 255.0, rendercolor[1] / 255.0, rendercolor[2] / 255.0)
+                        self.obj_fcurves["rendercolor"].insert(blender_frame, rendercolor)
 
                 case (ObjectField.RenderFx, renderfx):
                     self.renderfx = renderfx
@@ -564,6 +569,7 @@ class Entity:
                     print(f"not implimented.... {field}")
 
         # CL_ProcessEntityUpdate -> R_UpdateLatchedVars
+        # FIXME: CL_CompareTimestamps isn't a simple comparison like we're doing
         if self.animtime != old_animtime or self.movetype != MoveType.NONE:
             self.prev_animtime = old_animtime
             self.prev_origin = old_origin
@@ -574,21 +580,17 @@ class Entity:
         # TODO: R_SetRenderMode
 
         if self.prev_frame is None or self.prev_frame != self.frame:
-            self.obj_fcurves['["frame"]'].keyframe_points.insert(blender_frame, self.frame).interpolation = "CONSTANT"
+            self.obj_fcurves["frame"].insert(blender_frame, self.frame)
             self.prev_frame = self.frame
 
         if self.prev_origin is None or self.prev_origin != self.origin:
             location = Vector(self.origin) * self.blender_scale
-            location_fcurves = self.obj_fcurves["location"]
-            for i in range(3):
-                location_fcurves[i].keyframe_points.insert(blender_frame, location[i]).interpolation = "CONSTANT"
+            self.obj_fcurves["location"].insert(blender_frame, location)
             self.prev_origin = self.origin
 
         if self.prev_angles is None or self.prev_angles != self.angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
-            rotation_euler_fcurves = self.obj_fcurves["rotation_euler"]
-            for i in range(3):
-                rotation_euler_fcurves[i].keyframe_points.insert(blender_frame, rotation_euler[i]).interpolation = "CONSTANT"
+            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
             self.prev_angles = self.angles
 
     def draw_sprite_model(self, blender_frame: int, r_blend: float, camera: Camera):
@@ -626,34 +628,33 @@ class Entity:
             #     scale = goldsrc_dist * 0.005
 
         if self.prev_r_blend is None or self.prev_r_blend != r_blend:
-            self.obj_fcurves['["r_blend"]'].keyframe_points.insert(blender_frame, r_blend).interpolation = "CONSTANT"
+            self.obj_fcurves["r_blend"].insert(blender_frame, r_blend)
             self.prev_r_blend = r_blend
 
         if self.prev_frame is None or self.prev_frame != self.frame:
-            self.obj_fcurves['["frame"]'].keyframe_points.insert(blender_frame, int(self.frame)).interpolation = "CONSTANT"
+            self.obj_fcurves["frame"].insert(blender_frame, int(self.frame))
             self.prev_frame = self.frame
 
         if self.prev_origin is None or self.prev_origin != self.origin:
             location = Vector(self.origin) * self.blender_scale
-            location_fcurves = self.obj_fcurves["location"]
-            for i in range(3):
-                location_fcurves[i].keyframe_points.insert(blender_frame, location[i]).interpolation = "CONSTANT"
+            self.obj_fcurves["location"].insert(blender_frame, location)
             self.prev_origin = self.origin
 
         if self.prev_scale is None or self.prev_scale != scale:
             working_scale = scale
             if working_scale <= 0.0:
                 working_scale = 1.0
-            scale_fcurves = self.obj_fcurves["scale"]
-            for i in range(3):
-                scale_fcurves[i].keyframe_points.insert(blender_frame, working_scale).interpolation = "CONSTANT"
+            # FIXME: maybe we can FCurveBufferGroup.insert take a regular float
+            # too and fix our typing problems?!
+            self.obj_fcurves["scale"].insert(blender_frame, [working_scale] * 3)
             self.prev_scale = scale
 
         # TODO: rotation on axis for other sprite orientations
+        # TODO: compare to last angles?
         if self.model.spr.header.type == SpriteType.PARALLEL_ORIENTED:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
             # apply roll only
-            self.obj_fcurves["rotation_euler"][1].keyframe_points.insert(blender_frame, rotation_euler[1]).interpolation = "CONSTANT"
+            self.obj_fcurves["rotation_euler"][1].insert(blender_frame, rotation_euler[1])
 
     # R_StudioSetUpTransform
     def studio_set_up_transform(self, time: float) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
@@ -690,65 +691,19 @@ class Entity:
 
         return origin, angles
 
-    def ensure_weapon_armature(self, weapon_model: CachedModel) -> tuple[dict[str, dict], dict[str, Matrix]]:
-        if weapon_model in self.weapon_armatures:
-            return self.weapon_armatures[weapon_model]
-
-        weapon_obj = weapon_model.create_object(self.mod, self.blender_scale, self.collection, False)
-        weapon_obj.parent = self.object
-
-        anim_data = weapon_obj.animation_data_create()
-        obj_action = bpy.data.actions.new(name=f"{weapon_obj.name}_Action")
-        obj_slot = obj_action.slots.new(id_type="OBJECT", name=weapon_obj.name)
-        anim_data.action = obj_action
-        anim_data.action_slot = obj_slot
-        obj_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(obj_action, obj_slot) # type: ignore
-
-        # FIXME: use ["draw"] system
-        self.weapon_fcurves[weapon_model] = obj_cb.fcurves.new("hide_render")
-        # hide by default
-        self.weapon_fcurves[weapon_model].keyframe_points.insert(1, True).interpolation = "CONSTANT"
-
-        bone_fcurves: dict[str, dict] = {}
-        rest_local_inv: dict[str, Matrix] = {}
-        armature_data: bpy.types.Armature = weapon_obj.data # type: ignore
-
-        for pose_bone in weapon_obj.pose.bones: # type: ignore
-            pose_bone: bpy.types.PoseBone
-            pose_bone.rotation_mode = 'QUATERNION'
-            bone_name = pose_bone.name
-            bone_string = f"pose.bones[\"{bone_name}\"]"
-            loc_fcs = []
-            rot_fcs = []
-            for i in range(3):
-                loc_fcs.append(obj_cb.fcurves.new(bone_string + ".location", index=i))
-            for i in range(4):
-                rot_fcs.append(obj_cb.fcurves.new(bone_string + ".rotation_quaternion", index=i))
-            bone_fcurves[bone_name] = {'loc': loc_fcs, 'rot': rot_fcs}
-            bl_bone = armature_data.bones[bone_name]
-            if pose_bone.parent:
-                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
-                local_rest = parent_world.inverted() @ bl_bone.matrix_local
-            else:
-                local_rest = bl_bone.matrix_local.copy()
-            rest_local_inv[bone_name] = local_rest.inverted()
-
-        result = (bone_fcurves, rest_local_inv)
-        self.weapon_armatures[weapon_model] = result
-        return result
-
-
-    def apply_weapon_bones(self, blender_frame: int, player_world_mats: dict[int, Matrix], weapon_model: 'CachedModel', bone_fcurves: dict[str, dict], rest_local_inv: dict[str, Matrix]) -> None:
+    # We should change this to work with movetype follow as well :)
+    # R_StudioMergeBones
+    def apply_weapon_bones(self, blender_frame: int, player_world_mats: dict[int, Matrix], weapon_model: CachedModel, bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]], bone_local_rest_matrix_map: dict[str, Matrix], model: CachedModel) -> None:
         # build name -> world_mat lookup from player bones
         player_bones_by_name: dict[str, Matrix] = {
-            self.model.mdl.bones[bone_idx].name: mat
+            model.mdl.bones[bone_idx].name: mat
             for bone_idx, mat in player_world_mats.items()
         }
 
         for bone in weapon_model.mdl.bones:
-            bone_fcs = bone_fcurves.get(bone.name)
-            rest_inv = rest_local_inv.get(bone.name)
-            if not bone_fcs or rest_inv is None:
+            bone_fcurves = bone_fcurves_map.get(bone.name)
+            bone_local_rest_matrix_inverse = bone_local_rest_matrix_map.get(bone.name)
+            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
                 continue
 
             world_mat = player_bones_by_name.get(bone.name)
@@ -762,16 +717,15 @@ class Entity:
                 parent_world = player_bones_by_name.get(parent_name)
                 if parent_world is None:
                     continue
-                animated_local = parent_world.inverted() @ world_mat
+                animated_local: Matrix = parent_world.inverted() @ world_mat
 
-            matrix_basis = rest_inv @ animated_local
-            loc, q, _ = matrix_basis.decompose()
+            matrix_basis = bone_local_rest_matrix_inverse @ animated_local
+            location, quaternion, _ = matrix_basis.decompose()
 
-            for i, v in enumerate((loc.x, loc.y, loc.z)):
-                bone_fcs['loc'][i].keyframe_points.insert(blender_frame, v).interpolation = "CONSTANT"
-            for i, v in enumerate((q.w, q.x, q.y, q.z)):
-                bone_fcs['rot'][i].keyframe_points.insert(blender_frame, v).interpolation = "CONSTANT"
+            bone_fcurves["location"].insert(blender_frame, location)
+            bone_fcurves["rotation_quaternion"].insert(blender_frame, quaternion)
 
+    # R_StudioProcessGait, i think?
     def update_gait(self, time: float, prev_time: float) -> None:
         dt: float = time - prev_time
         if dt < 0:
@@ -826,8 +780,90 @@ class Entity:
             self.gaitframe += gait_sequence.num_frames
 
     # R_StudioDrawPlayer
-    def draw_studio_player(self, blender_frame: int, time: float, prev_time: float) -> None:
-        # TODO: handle playermodel change and top + bottom color
+    def draw_studio_player(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+        player_info = players[self.player_index]
+        if self.player_model.name != player_info.model:
+            self.player_model.name = player_info.model
+            model_name = player_info.model
+            model = mod.for_name(f"models/player/{model_name}/{model_name}.mdl", False)
+            if model is None:
+                model = self.model
+            self.player_model.model = model
+
+        # r_model
+        model = self.player_model.model
+        if model is None:
+            # engine does the same thing .. maybe it's normal?
+            print("player model was none?!")
+            return
+
+        # not using a submodel
+        if model == self.model:
+            result = (self.object, self.active_model_fcurve, self.body_part_fcurves, self.bone_fcurves_map, self.bone_local_rest_matrix_inverse_map)
+        elif model in self.player_model_cache:
+            result = self.player_model_cache[model]
+        else:
+            model_obj = model.create_object(self.mod, self.blender_scale, self.collection, None)
+            model_obj.parent = self.object
+
+            obj_action = ActionContext(model_obj)
+            armature_data = self.setup_armature(model_obj, obj_action)
+
+            model_obj["active_model"] = True
+            active_model_fcurve = obj_action.fcurve('["active_model"]')
+            active_model_fcurve.insert(1, False)
+
+            body_part_fcurves: dict[str, FCurveBuffer] = {}
+            for child in model_obj.children:
+                if child.type != "MESH":
+                    continue
+
+                child_action = ActionContext(child)
+                fcurve = child_action.fcurve('["body_hidden"]')
+                fcurve.insert(1, True)
+                body_part_fcurves[child.name] = fcurve
+
+                child["body_hidden"] = True
+                for path in ["hide_render", "hide_viewport"]:
+                    visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
+                    visibility_driver.type = "SCRIPTED"
+
+                    entity_draw_driver_var = visibility_driver.variables.new()
+                    entity_draw_driver_var.name = "entity_draw"
+                    entity_draw_driver_var.type = "SINGLE_PROP"
+                    entity_draw_driver_var.targets[0].id = self.object
+                    entity_draw_driver_var.targets[0].data_path = '["draw"]'
+
+                    parent_active_model_driver_var = visibility_driver.variables.new()
+                    parent_active_model_driver_var.name = "parent_active_model"
+                    parent_active_model_driver_var.type = "SINGLE_PROP"
+                    parent_active_model_driver_var.targets[0].id = model_obj
+                    parent_active_model_driver_var.targets[0].data_path = '["active_model"]'
+
+                    body_hidden_driver_var = visibility_driver.variables.new()
+                    body_hidden_driver_var.name = "body_hidden"
+                    body_hidden_driver_var.type = "SINGLE_PROP"
+                    body_hidden_driver_var.targets[0].id = child
+                    body_hidden_driver_var.targets[0].data_path = '["body_hidden"]'
+
+                    visibility_driver.expression = "not entity_draw or not parent_active_model or body_hidden"
+
+            result = (model_obj, active_model_fcurve, body_part_fcurves, *armature_data)
+            self.player_model_cache[model] = result
+
+        model_obj, active_model_fcurve, body_part_fcurves, bone_fcurves, bone_local_rest_matrix_inverse_map = result
+
+        # R_StudioChangePlayerModel (in spirit)
+        if model != self.prev_model:
+            if self.prev_model is not None:
+                if self.prev_model == self.model:
+                    self.active_model_fcurve.insert(blender_frame, False)
+                else:
+                    self.player_model_cache[self.prev_model][1].insert(blender_frame, False)
+            active_model_fcurve.insert(blender_frame, True)
+            self.prev_model = model
+
+        # TODO: handle top + bottom color
         origin, angles = self.studio_set_up_transform(time)
 
         adj: list[float] | None = None
@@ -838,7 +874,7 @@ class Entity:
         if self.gaitsequence:
             self.update_gait(time, prev_time)
 
-            sequence = self.model.mdl.sequences[self.sequence]
+            sequence = model.mdl.sequences[self.sequence]
 
             blending, pitch = self.studio_player_blend(sequence, angles[0])
 
@@ -862,31 +898,71 @@ class Entity:
             gait_frame = self.gaitframe
 
         location = Vector(origin) * self.blender_scale
-        for i in range(3):
-            self.obj_fcurves["location"][i].keyframe_points.insert(blender_frame, location[i]).interpolation = "CONSTANT"
+        self.obj_fcurves["location"].insert(blender_frame, location)
 
-        rotation = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
-        for i in range(3):
-            self.obj_fcurves["rotation_euler"][i].keyframe_points.insert(blender_frame, rotation[i]).interpolation = "CONSTANT"
+        rotation_euler = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
+        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
-        self.apply_body(blender_frame)
+        self.apply_body(blender_frame, model, model_obj, body_part_fcurves)
 
         f = self.calculate_frame(time)
-        world_mats = self.apply_animation_frame(blender_frame, f, adj, gait_sequence_idx, gait_frame, blending)
+        world_mats = self.apply_animation_frame(blender_frame, model, f, bone_fcurves, bone_local_rest_matrix_inverse_map, adj, gait_sequence_idx, gait_frame, blending)
 
         if self.weaponmodel is not None:
-            weapon_bone_fcurves, weapon_rest_local_inv = self.ensure_weapon_armature(self.weaponmodel)
-            self.apply_weapon_bones(blender_frame, world_mats, self.weaponmodel, weapon_bone_fcurves, weapon_rest_local_inv)
+            if self.weaponmodel in self.weaponmodel_cache:
+                result = self.weaponmodel_cache[self.weaponmodel]
+            else:
+                weapon_obj = self.weaponmodel.create_object(self.mod, self.blender_scale, self.collection, None)
+                weapon_obj.parent = self.object
+
+                obj_action = ActionContext(weapon_obj)
+                armature_data = self.setup_armature(weapon_obj, obj_action)
+
+                weapon_obj["active_weaponmodel"] = True
+                active_weaponmodel_fcurve = obj_action.fcurve('["active_weaponmodel"]')
+                active_weaponmodel_fcurve.insert(1, False)
+
+                for child in weapon_obj.children:
+                    if child.type != "MESH":
+                        continue
+
+                    # if player weaponmodels can have different body parts, add that logic here
+
+                    for path in ["hide_render", "hide_viewport"]:
+                        visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
+                        visibility_driver.type = "SCRIPTED"
+
+                        active_weaponmodel_driver_var = visibility_driver.variables.new()
+                        active_weaponmodel_driver_var.name = "active_weaponmodel"
+                        active_weaponmodel_driver_var.type = "SINGLE_PROP"
+                        active_weaponmodel_driver_var.targets[0].id = weapon_obj
+                        active_weaponmodel_driver_var.targets[0].data_path = '["active_weaponmodel"]'
+
+                        gentity_draw_driver_var = visibility_driver.variables.new()
+                        gentity_draw_driver_var.name = "entity_draw"
+                        gentity_draw_driver_var.type = "SINGLE_PROP"
+                        gentity_draw_driver_var.targets[0].id = self.object
+                        gentity_draw_driver_var.targets[0].data_path = '["draw"]'
+
+                        visibility_driver.expression = "not entity_draw or not active_weaponmodel"
+
+                result = (active_weaponmodel_fcurve, *armature_data)
+                self.weaponmodel_cache[self.weaponmodel] = result
+
+            active_weaponmodel_fcurve, weapon_bone_fcurves_map, weapon_bone_local_rest_matrix_map = result
+
+            self.apply_weapon_bones(blender_frame, world_mats, self.weaponmodel, weapon_bone_fcurves_map, weapon_bone_local_rest_matrix_map, model)
+
             if self.weaponmodel != self.prev_weaponmodel:
                 if self.prev_weaponmodel is not None:
-                    self.weapon_fcurves[self.prev_weaponmodel].keyframe_points.insert(blender_frame, True).interpolation = "CONSTANT"
+                    self.weaponmodel_cache[self.prev_weaponmodel][0].insert(blender_frame, False)
 
-                self.weapon_fcurves[self.weaponmodel].keyframe_points.insert(blender_frame, False).interpolation = "CONSTANT"
+                active_weaponmodel_fcurve.insert(blender_frame, True)
 
             self.prev_weaponmodel = self.weaponmodel
 
         elif self.prev_weaponmodel is not None:
-            self.weapon_fcurves[self.prev_weaponmodel].keyframe_points.insert(blender_frame, True).interpolation = "CONSTANT"
+            self.weaponmodel_cache[self.prev_weaponmodel][0].insert(blender_frame, False)
 
             self.prev_weaponmodel = None
 
@@ -895,9 +971,15 @@ class Entity:
         # self.prev_animtime = self.animtime
 
     # R_StudioDrawModel
-    def draw_studio_model(self, blender_frame: int, time: float):
+    def draw_studio_model(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
         if self.renderfx == RenderFx.DeadPlayer:
-            # TODO
+            if self.renderamt <= 0: # or > cl.maxclients
+                return
+
+            # TODO: prevent interp?
+            self.player_index = self.renderamt - 1
+            self.draw_studio_player(blender_frame, time, prev_time, players, mod)
+
             return
 
         if self.movetype == MoveType.FOLLOW:
@@ -908,31 +990,38 @@ class Entity:
         origin, angles = self.studio_set_up_transform(time)
 
         location = Vector(origin) * self.blender_scale
-        for i in range(3):
-            self.obj_fcurves["location"][i].keyframe_points.insert(blender_frame, location[i]).interpolation = "CONSTANT"
+        self.obj_fcurves["location"].insert(blender_frame, location)
 
-        # opengl needs pitch flipped, but blender doesn't. we don't flip earlier beacuse math depends on it
-        rotation = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
-        for i in range(3):
-            self.obj_fcurves["rotation_euler"][i].keyframe_points.insert(blender_frame, rotation[i]).interpolation = "CONSTANT"
+        # FIXME: check if the following is true
+        # opengl needs pitch flipped, but blender doesn't. we don't flip earlier beacuse math depends on it (supposedly)
+        rotation_euler = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
+        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
-        self.apply_body(blender_frame)
+        self.apply_body(blender_frame, self.model, self.object, self.body_part_fcurves)
 
         f = self.calculate_frame(time)
         if f is not None:
-            self.apply_animation_frame(blender_frame, f)
+            self.apply_animation_frame(
+                blender_frame,
+                self.model,
+                f,
+                self.bone_fcurves_map,
+                self.bone_local_rest_matrix_inverse_map,
+            )
 
         # self.prev_origin = self.origin
         # self.prev_angles = self.angles
         # self.prev_animtime = self.animtime
 
-    def apply_body(self, blender_frame: int):
-        for body_part in self.model.mdl.body_parts:
+    # TODO: cache these!!!!!!!!!!!
+    # R_StudioRenderFinal right before R_StudioDrawPoints
+    def apply_body(self, blender_frame: int, model: CachedModel, obj: bpy.types.Object, body_part_fcurves: dict[str, FCurveBuffer]):
+        for body_part in model.mdl.body_parts:
             selected_idx = (self.body // body_part.base) % body_part.num_models
             for model_idx, body_part_model in enumerate(body_part.models):
-                fcurve = self._mesh_fcurves[f"{self.object.name}_{body_part_model.name}"]
+                fcurve = body_part_fcurves[f"{obj.name}_{body_part_model.name}"]
                 hidden = (model_idx != selected_idx)
-                fcurve.keyframe_points.insert(blender_frame, hidden).interpolation = "CONSTANT"
+                fcurve.insert(blender_frame, hidden)
 
     def calculate_frame(self, time: float) -> float:
         sequence = self.model.mdl.sequences[self.sequence]
@@ -1004,13 +1093,16 @@ class Entity:
     def apply_animation_frame(
         self,
         blender_frame: int,
+        model: CachedModel,
         f: float,
+        bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]],
+        bone_local_rest_matrix_inverse_map: dict[str, Matrix],
         adj: list[float] | None = None,
         gait_sequence_idx: int | None = None,
         gait_frame: float | None = None,
         blending: float = 0.0
     ) -> dict[int, Matrix]:
-        sequence = self.model.mdl.sequences[self.sequence]
+        sequence = model.mdl.sequences[self.sequence]
         blend = sequence.blends[0]
 
         frame: int = int(f)
@@ -1038,7 +1130,7 @@ class Entity:
 
         gait_world_mats: dict[int, Matrix] = {}
         if gait_sequence_idx is not None and gait_frame is not None:
-            gait_sequence = self.model.mdl.sequences[gait_sequence_idx]
+            gait_sequence = model.mdl.sequences[gait_sequence_idx]
             if gait_sequence.blends:
                 gait_blend = gait_sequence.blends[0]
                 gf: int = int(gait_frame)
@@ -1048,7 +1140,7 @@ class Entity:
                 gait_frame0 = gait_blend.frames[min(gf, gait_num_frames - 1)]
                 gait_frame1 = gait_blend.frames[min(gf + 1, gait_num_frames - 1)]
 
-                for bone_idx, bone in enumerate(self.model.mdl.bones):
+                for bone_idx, bone in enumerate(model.mdl.bones):
                     gp0 = gait_frame0.positions[bone_idx]
                     gp1 = gait_frame1.positions[bone_idx]
                     gpx: float = gp0.x * gs_inv + gp1.x * gs
@@ -1076,7 +1168,7 @@ class Entity:
         world_mats: dict[int, Matrix] = {}
         found_spine: bool = False
 
-        for bone_idx, bone in enumerate(self.model.mdl.bones):
+        for bone_idx, bone in enumerate(model.mdl.bones):
             if gait_world_mats and not found_spine:
                 if bone.name == "Bip01 Spine":
                     found_spine = True
@@ -1118,7 +1210,7 @@ class Entity:
 
             if adj:
                 adj_euler = Vector((0.0, 0.0, 0.0))
-                for adj_idx, bc in enumerate(self.model.mdl.bone_controllers):
+                for adj_idx, bc in enumerate(model.mdl.bone_controllers):
                     if bc.bone == bone_idx:
                         axis = bc.type & SequenceMotionFlags.TYPES
                         if axis == SequenceMotionFlags.XR:
@@ -1156,24 +1248,22 @@ class Entity:
             else:
                 world_mats[bone_idx] = world_mats[bone.parent] @ keyframe_mat
 
-        for bone_idx, bone in enumerate(self.model.mdl.bones):
-            bone_fcs = self.bone_fcurves.get(bone.name)
-            rest_inv = self._rest_local_inv.get(bone.name)
-            if not bone_fcs or rest_inv is None:
+        for bone_idx, bone in enumerate(model.mdl.bones):
+            bone_fcurves = bone_fcurves_map.get(bone.name)
+            bone_local_rest_matrix_inverse = bone_local_rest_matrix_inverse_map.get(bone.name)
+            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
                 continue
 
             if bone.parent == -1:
                 animated_local = world_mats[bone_idx]
             else:
-                animated_local = world_mats[bone.parent].inverted() @ world_mats[bone_idx]
+                animated_local: Matrix = world_mats[bone.parent].inverted() @ world_mats[bone_idx]
 
-            matrix_basis = rest_inv @ animated_local
-            loc, q, _ = matrix_basis.decompose()
+            matrix_basis = bone_local_rest_matrix_inverse @ animated_local
+            location, quaterion, _ = matrix_basis.decompose()
 
-            for i, v in enumerate((loc.x, loc.y, loc.z)):
-                bone_fcs['loc'][i].keyframe_points.insert(blender_frame, v).interpolation = "CONSTANT"
-            for i, v in enumerate((q.w, q.x, q.y, q.z)):
-                bone_fcs['rot'][i].keyframe_points.insert(blender_frame, v).interpolation = "CONSTANT"
+            bone_fcurves["location"].insert(blender_frame, location)
+            bone_fcurves["rotation_quaternion"].insert(blender_frame, quaterion)
 
         return world_mats
 
@@ -1204,7 +1294,7 @@ class BeamParticle:
     org: tuple[float, float, float]
     die: float
     obj: bpy.types.Object
-    fcurves: dict
+    fcurves: dict[str, Any]
 
 class Beam:
     prev_source: Optional[tuple[float, float, float]] = None
@@ -1247,20 +1337,14 @@ class Beam:
         self.object = bpy.data.objects.new("Beam", mesh)
         collection.objects.link(self.object)
 
-        self.object.animation_data_create()
-        obj_action = bpy.data.actions.new(name=f"{self.object.name}_Action")
-        obj_slot = obj_action.slots.new(id_type="OBJECT", name=self.object.name)
-        self.object.animation_data.action = obj_action
-        self.object.animation_data.action_slot = obj_slot
-
-        obj_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(obj_action, obj_slot) # type: ignore
+        obj_action = ActionContext(self.object)
 
         self.obj_fcurves = {}
 
         self.object["draw"] = False
-        self.obj_fcurves["draw"] = obj_cb.fcurves.new('["draw"]')
+        self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
         # hide by default
-        self.obj_fcurves["draw"].keyframe_points.insert(1, False).interpolation = "CONSTANT"
+        self.obj_fcurves["draw"].insert(1, False)
 
         for path in ["hide_render", "hide_viewport"]:
             visibility_driver = self.object.driver_add(path).driver
@@ -1312,11 +1396,9 @@ class Beam:
         self.object["flags"] = 0
 
         for prop in ["amplitude", "freq", "speed", "brightness", "frame", "flags"]:
-            self.obj_fcurves[prop] = obj_cb.fcurves.new(f'["{prop}"]')
+            self.obj_fcurves[prop] = obj_action.fcurve(f'["{prop}"]')
 
-        self.obj_fcurves["color"] = []
-        for i in range(3):
-            self.obj_fcurves["color"].append(obj_cb.fcurves.new('["color"]', index=i))
+        self.obj_fcurves["color"] = obj_action.fcurves('["color"]', 3)
 
         modifier = self.object.modifiers.new("GeometryNodes", "NODES")
         modifier.node_group = gsr_nodes.ensure_group("Beam Segment")
@@ -1324,15 +1406,11 @@ class Beam:
         material = self.model.spr.ensure_beam_material(self.model.name)
         modifier["Socket_1"] = material
 
-        # "Socket_n" = horrible, horrible hack!
-        self.obj_fcurves["source"] = []
-        for i in range (3):
-            self.obj_fcurves["source"].append(obj_cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_2"]', index=i))
-        self.obj_fcurves["delta"] = []
-        for i in range (3):
-            self.obj_fcurves["delta"].append(obj_cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_3"]', index=i))
-        self.obj_fcurves["width"] = obj_cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_4"]')
-        self.obj_fcurves["segments"] = obj_cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_5"]')
+        # FIXME: "Socket_n" = horrible, horrible hack!
+        self.obj_fcurves["source"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_2"]', 3)
+        self.obj_fcurves["delta"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_3"]', 3)
+        self.obj_fcurves["width"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_4"]')
+        self.obj_fcurves["segments"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_5"]')
 
     def setup_beamfollow(self):
         self.particles: list[BeamParticle] = []
@@ -1345,7 +1423,10 @@ class Beam:
                 case (ObjectField.Draw, draw):
                     self.draw = draw
                     if self.type == BeamType.TE_BEAMPOINTS:
-                        self.obj_fcurves["draw"].keyframe_points.insert(blender_frame, self.draw).interpolation = "CONSTANT"
+                        self.obj_fcurves["draw"].insert(blender_frame, self.draw)
+                    elif self.type == BeamType.TE_BEAMFOLLOW:
+                        for particle in self.particles:
+                            particle.fcurves["draw"].insert(blender_frame, self.draw)
                 case (ObjectField.Flags, flags):
                     self.flags = FBEAM(flags)
                 case (ObjectField.Framerate, framerate):
@@ -1371,6 +1452,7 @@ class Beam:
                 case (ObjectField.Brightness, brightness):
                     self.brightness = brightness
 
+    # R_BeamDraw
     def beam_draw(self, blender_frame: int, time: float, collection):
         match self.type:
             case BeamType.TE_BEAMPOINTS:
@@ -1380,61 +1462,56 @@ class Beam:
             case _:
                 print(f"unhandled beam type! {self.type.name} ({self.type.value})")
 
+    # R_DrawSegs
     def draw_segs(self, blender_frame: int, time: float):
         if self.prev_source is None or self.prev_source != self.source:
             source = Vector(self.source) * self.blender_scale
-            for i in range(3):
-                self.obj_fcurves["source"][i].keyframe_points.insert(
-                    blender_frame, source[i]
-                ).interpolation = "CONSTANT"
+            self.obj_fcurves["source"].insert(blender_frame, source)
             self.prev_source = self.source
 
         if self.prev_delta is None or self.prev_delta != self.delta:
             delta = Vector(self.delta) * self.blender_scale
-            for i in range(3):
-                self.obj_fcurves["delta"][i].keyframe_points.insert(
-                    blender_frame, delta[i]
-                ).interpolation = "CONSTANT"
+            self.obj_fcurves["delta"].insert(blender_frame, delta)
             self.prev_delta = self.delta
 
         if self.prev_width is None or self.prev_width != self.width:
-            self.obj_fcurves["width"].keyframe_points.insert(blender_frame, self.width * self.blender_scale).interpolation = "CONSTANT"
+            self.obj_fcurves["width"].insert(blender_frame, self.width * self.blender_scale)
             self.prev_width = self.width
         if self.prev_segments is None or self.prev_segments != self.segments:
-            self.obj_fcurves["segments"].keyframe_points.insert(blender_frame, self.segments).interpolation = "CONSTANT"
+            self.obj_fcurves["segments"].insert(blender_frame, self.segments)
             self.prev_segments = self.segments
 
         if self.prev_color is None or self.prev_color != self.color:
-            for i in range(3):
-                self.obj_fcurves["color"][i].keyframe_points.insert(blender_frame, self.color[i]).interpolation = "CONSTANT"
+            self.obj_fcurves["color"].insert(blender_frame, self.color)
             self.prev_color = self.color
 
         if self.prev_amplitude is None or self.prev_amplitude != self.amplitude:
-            self.obj_fcurves["amplitude"].keyframe_points.insert(blender_frame, self.amplitude).interpolation = "CONSTANT"
+            self.obj_fcurves["amplitude"].insert(blender_frame, self.amplitude)
             self.prev_amplitude = self.amplitude
         if self.prev_freq is None or self.prev_freq != self.freq:
-            self.obj_fcurves["freq"].keyframe_points.insert(blender_frame, self.freq).interpolation = "CONSTANT"
+            self.obj_fcurves["freq"].insert(blender_frame, self.freq)
             self.prev_freq = self.freq
         if self.prev_speed is None or self.prev_speed != self.speed:
-            self.obj_fcurves["speed"].keyframe_points.insert(blender_frame, self.speed).interpolation = "CONSTANT"
+            self.obj_fcurves["speed"].insert(blender_frame, self.speed)
             self.prev_speed = self.speed
         if self.prev_brightness is None or self.prev_brightness != self.brightness:
-            self.obj_fcurves["brightness"].keyframe_points.insert(blender_frame, self.brightness).interpolation = "CONSTANT"
+            self.obj_fcurves["brightness"].insert(blender_frame, self.brightness)
             self.prev_brightness = self.brightness
         if self.prev_flags is None or self.prev_flags != self.flags:
-            self.obj_fcurves["flags"].keyframe_points.insert(blender_frame, int(self.flags)).interpolation = "CONSTANT"
+            self.obj_fcurves["flags"].insert(blender_frame, int(self.flags))
             self.prev_flags = self.flags
 
         frame = int(self.framerate * time + self.frame) % self.framecount
         if self.prev_frame is None or self.prev_frame != frame:
-            self.obj_fcurves["frame"].keyframe_points.insert(blender_frame, frame).interpolation = "CONSTANT"
+            self.obj_fcurves["frame"].insert(blender_frame, frame)
             self.prev_frame = frame
 
+    # R_DrawBeamFollow
     def draw_beam_follow(self, blender_frame: int, time: float, collection):
         if self.flags & FBEAM.STARTENTITY:
             last_org = self.particles[0].org if self.particles else None
             if last_org is None or (Vector(self.source) - Vector(last_org)).length >= 32:
-                material = self.model.spr.ensure_beam_material(self.model.name)
+                material = self.model.spr.ensure_beamfollow_material(self.model.name)
                 obj, fcurves = self._create_beam_particle_object(collection, material)
                 particle = BeamParticle(
                     org=self.source,
@@ -1446,7 +1523,7 @@ class Beam:
 
         for particle in self.particles:
             if particle.die < time:
-                particle.fcurves["hide_render"].keyframe_points.insert(blender_frame, True).interpolation = "CONSTANT"
+                particle.fcurves["draw"].insert(blender_frame, False)
 
         active = [p for p in self.particles if p.die >= time]
 
@@ -1455,6 +1532,7 @@ class Beam:
 
         frame = int(self.framerate * time + self.frame) % self.framecount
 
+        # FIXME: only update if they're different! and if they're not drawn don't update!!!!!!!!!!
         for i in range(len(active) - 1):
             current = active[i]
             next_p = active[i + 1]
@@ -1462,17 +1540,18 @@ class Beam:
             source = Vector(current.org) * self.blender_scale
             raw_delta = Vector(next_p.org) - Vector(current.org)
             delta = Vector(raw_delta) * self.blender_scale # pyright: ignore[reportArgumentType]
-            brightness = max(0.0, (current.die - time) / self.amplitude)
+            brightness_start = max(0.0, (current.die - time) / self.amplitude)
+            brightness_end = 0.0 if next_p is active[-1] else max(0.0, (next_p.die - time) / self.amplitude)
 
-            fcs = current.fcurves
-            fcs["hide_render"].keyframe_points.insert(blender_frame, False).interpolation = "CONSTANT"
-            for j in range(3):
-                fcs["source"][j].keyframe_points.insert(blender_frame, source[j]).interpolation = "CONSTANT"
-                fcs["delta"][j].keyframe_points.insert(blender_frame, delta[j]).interpolation = "CONSTANT"
-                fcs["color"][j].keyframe_points.insert(blender_frame, self.color[j]).interpolation = "CONSTANT"
-            fcs["width"].keyframe_points.insert(blender_frame, self.width * self.blender_scale).interpolation = "CONSTANT"
-            fcs["brightness"].keyframe_points.insert(blender_frame, brightness).interpolation = "CONSTANT"
-            fcs["frame"].keyframe_points.insert(blender_frame, frame).interpolation = "CONSTANT"
+            fcurves = current.fcurves
+            fcurves["draw"].insert(blender_frame, True)
+            fcurves["source"].insert(blender_frame, source)
+            fcurves["delta"].insert(blender_frame, delta)
+            fcurves["color"].insert(blender_frame, self.color)
+            fcurves["width"].insert(blender_frame, self.width * self.blender_scale)
+            fcurves["brightness_start"].insert(blender_frame, brightness_start)
+            fcurves["brightness_end"].insert(blender_frame, brightness_end)
+            fcurves["frame"].insert(blender_frame, frame)
 
 
     def _create_beam_particle_object(self, collection, material) -> tuple[bpy.types.Object, dict]:
@@ -1483,37 +1562,50 @@ class Beam:
         obj = bpy.data.objects.new("BeamSegment", mesh)
         collection.objects.link(obj)
 
-        obj.animation_data_create()
-        action = bpy.data.actions.new(name=f"{obj.name}_Action")
-        slot = action.slots.new(id_type="OBJECT", name=obj.name)
-        obj.animation_data.action = action
-        obj.animation_data.action_slot = slot
-        cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(action, slot) # type: ignore
+        obj_action = ActionContext(obj)
 
-        obj["brightness"] = 1.0
-        obj.id_properties_ui("brightness").update(min=0.0, max=1.0)
+        obj["brightness_start"] = 1.0
+        obj.id_properties_ui("brightness_start").update(min=0.0, max=1.0)
+        obj["brightness_end"] = 1.0
+        obj.id_properties_ui("brightness_end").update(min=0.0, max=1.0)
         obj["color"] = (1.0, 1.0, 1.0)
         obj.id_properties_ui("color").update(subtype="COLOR", min=0.0, max=1.0, soft_min=0.0, soft_max=1.0)
         obj["frame"] = 0
         obj.id_properties_ui("frame").update(min=0, max=self.framecount)
 
         fcurves = {}
-        fcurves["hide_render"] = cb.fcurves.new("hide_render")
-        fcurves["hide_render"].keyframe_points.insert(1, True).interpolation = "CONSTANT"
-        fcurves["brightness"] = cb.fcurves.new('["brightness"]')
-        fcurves["color"] = [cb.fcurves.new('["color"]', index=i) for i in range(3)]
-        fcurves["frame"] = cb.fcurves.new('["frame"]')
 
-        node_group = gsr_nodes.beam_1_node_group()
+        obj["draw"] = False
+        fcurves["draw"] = obj_action.fcurve('["draw"]')
+        # hide by default
+        fcurves["draw"].insert(1, False)
+
+        for path in ["hide_render", "hide_viewport"]:
+            visibility_driver = obj.driver_add(path).driver
+            visibility_driver.type = "SCRIPTED"
+
+            draw_driver_var = visibility_driver.variables.new()
+            draw_driver_var.name = "draw"
+            draw_driver_var.type = "SINGLE_PROP"
+            draw_driver_var.targets[0].id = obj
+            draw_driver_var.targets[0].data_path = '["draw"]'
+
+            visibility_driver.expression = "not draw"
+
+        fcurves["brightness_start"] = obj_action.fcurve('["brightness_start"]')
+        fcurves["brightness_end"] = obj_action.fcurve('["brightness_end"]')
+        fcurves["color"] = obj_action.fcurves('["color"]', 3)
+        fcurves["frame"] = obj_action.fcurve('["frame"]')
+
         modifier = obj.modifiers.new("GeometryNodes", "NODES")
-        modifier.node_group = node_group
+        modifier.node_group = gsr_nodes.ensure_group("Beam Segment")
         modifier["Socket_1"] = material
-        # two segements .. HACKHACK
+        # FIXME: two segements means there will be a beam of any lenght, which is what we want I think?
         modifier["Socket_5"] = 2
 
-        fcurves["source"] = [cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_2"]', index=i) for i in range(3)]
-        fcurves["delta"] = [cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_3"]', index=i) for i in range(3)]
-        fcurves["width"] = cb.fcurves.new(f'modifiers["{modifier.name}"]["Socket_4"]')
+        fcurves["source"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_2"]', 3)
+        fcurves["delta"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_3"]', 3)
+        fcurves["width"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_4"]')
 
         return obj, fcurves
 
@@ -1676,7 +1768,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         self.bsp = Bsp(self.fs, map_file)
         self.face_mesh_map = self.bsp.generate_face_mesh_map()
 
-        self.lightstyle_id_map: dict[int, list[tuple[bpy.types.FCurve, float | None]]] = defaultdict(list)
+        self.lightstyle_id_map: dict[int, list[tuple[FCurveBuffer, float | None]]] = defaultdict(list)
         for light in bpy.data.lights:
             if light.type != "POINT":
                 continue
@@ -1689,14 +1781,9 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
             light["light_style_value"] = 1.0
 
-            light_anim_data = light.animation_data_create()
-            light_action: bpy.types.Action = bpy.data.actions.new(name=f"{light.name}_Action")
-            light_slot: bpy.types.ActionSlot = light_action.slots.new(id_type="LIGHT", name=light.name)
-            light_anim_data.action = light_action
-            light_anim_data.action_slot = light_slot
-            light_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(light_action, light_slot) # type: ignore
+            light_action = ActionContext(light)
 
-            light_fcurve: bpy.types.FCurve = light_cb.fcurves.new('["light_style_value"]')
+            light_fcurve = light_action.fcurve('["light_style_value"]')
 
             energy_driver: bpy.types.Driver = light.driver_add("energy").driver # type: ignore
             energy_driver.type = "SCRIPTED"
@@ -1721,19 +1808,14 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
         scene = bpy.context.scene
         assert scene is not None
-        scene_anim_data = scene.animation_data_create()
-        scene_action: bpy.types.Action = bpy.data.actions.new(name=f"{scene.name}_Action")
-        scene_slot: bpy.types.ActionSlot = scene_action.slots.new(id_type="SCENE", name=scene.name)
-        scene_anim_data.action = scene_action
-        scene_anim_data.action_slot = scene_slot
-        scene_cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(scene_action, scene_slot) # type: ignore
+        scene_action = ActionContext(scene)
 
         view_layer = bpy.context.view_layer
         assert view_layer is not None
         view_layer["animation_time"] = 0
 
         prev_animation_time = 0
-        animation_time_fcurve = scene_cb.fcurves.new(f"view_layers[\"{view_layer.name}\"][\"animation_time\"]")
+        animation_time_fcurve = scene_action.fcurve(f"view_layers[\"{view_layer.name}\"][\"animation_time\"]")
 
         print(f"importing gsr from {self.filepath}")
 
@@ -1752,13 +1834,13 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         self.decal_wad = Wad(wad_file, "decals.wad")
 
         self.players = [
-            PlayerInfo("", 0, 0, 0, 0.0, 0.0)
+            PlayerInfo("", 0, 0)
             for _ in range(32)
         ]
 
         # because python classes share default :)))))))))))
         self.mod: Mod = Mod()
-        self.camera = None
+        self.camera: Optional[Camera] = None
         self.entities: dict[int, Entity] = {}
         self.beams: dict[int, Beam] = {}
         self.decals: dict[int, Decal] = {}
@@ -1828,7 +1910,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
             animation_time = int(self.time * 10.0)
             if prev_animation_time != animation_time:
-                animation_time_fcurve.keyframe_points.insert(self.frame, animation_time)
+                animation_time_fcurve.insert(self.frame, animation_time)
                 prev_animation_time = animation_time
 
             message_count = self.br.u16()
@@ -1872,9 +1954,9 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     print("We don't know how to draw alias model!")
                 elif entity.model.type == ModelType.STUDIO:
                     if entity.player:
-                        entity.draw_studio_player(self.frame, self.time, self.prev_time)
+                        entity.draw_studio_player(self.frame, self.time, self.prev_time, self.players, self.mod)
                     else:
-                        entity.draw_studio_model(self.frame, self.time)
+                        entity.draw_studio_model(self.frame, self.time, self.prev_time, self.players, self.mod)
 
             for beam in self.beams.values():
                 if not beam.draw:
@@ -1893,7 +1975,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
                 for i, (fcurve, prev_value) in enumerate(self.lightstyle_id_map[index]):
                     if value != prev_value:
-                        fcurve.keyframe_points.insert(self.frame, value)
+                        fcurve.insert(self.frame, value)
                         self.lightstyle_id_map[index][i] = (fcurve, value)
 
             # R_LoadSkys
@@ -1951,6 +2033,59 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
             self.frame += 1
             wm.progress_update(self.br.tell())
 
+        for lightstyle in self.lightstyle_id_map.values():
+            for (fcurve, _) in lightstyle:
+                fcurve.flush()
+
+        animation_time_fcurve.flush()
+
+        if self.camera is not None:
+            # holy crap! python sucks! static analyzer is so stupid!
+            for fcurve in self.camera.fcurves.values(): # type: ignore
+                fcurve.flush()
+
+        for entity in self.entities.values():
+            for fcurve in entity.obj_fcurves.values():
+                fcurve: FCurveBuffer | FCurveBufferGroup
+                fcurve.flush()
+
+            if entity.model.type == ModelType.STUDIO:
+                entity.active_model_fcurve.flush()
+                for fcurve in entity.body_part_fcurves.values():
+                    fcurve.flush()
+
+                for bone_fcurves in entity.bone_fcurves_map.values():
+                    for fcurve_group in bone_fcurves.values():
+                        fcurve_group.flush()
+
+                # FIXME: only on players
+                for (_, active_model_fcurve, body_part_fcurves, bone_fcurves_map, _) in entity.player_model_cache.values():
+                    active_model_fcurve.flush()
+                    for fcurve in body_part_fcurves.values():
+                        fcurve.flush()
+
+                    for bone_fcurves in bone_fcurves_map.values():
+                        for fcurve_group in bone_fcurves.values():
+                            fcurve_group.flush()
+
+            # FIXME: only on players
+            for (active_weaponmodel_fcurve, weapon_bone_fcurves_map, _) in entity.weaponmodel_cache.values():
+                active_weaponmodel_fcurve.flush()
+
+                for weapon_bone_fcurves in weapon_bone_fcurves_map.values():
+                    for fcurve_group in weapon_bone_fcurves.values():
+                        fcurve_group.flush()
+
+        for beam in self.beams.values():
+            if beam.type == BeamType.TE_BEAMPOINTS:
+                for fcurve in beam.obj_fcurves.values():
+                    fcurve.flush()
+            elif beam.type == BeamType.TE_BEAMFOLLOW:
+                for particle in beam.particles:
+                    for fcurve in particle.fcurves.values():
+                        fcurve.flush()
+
+
         assert bpy.context.scene is not None
         bpy.context.scene.frame_current = 1
         bpy.context.scene.frame_end = self.frame - 1
@@ -1978,7 +2113,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     self.camera = Camera(self.br, self.frame, self.scale)
             case ObjectType.Entity:
                 id = self.br.u32()
-                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, viewmodel_collection, self.mod, self.players)
+                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, viewmodel_collection, self.mod)
             case ObjectType.Beam:
                 id = self.br.u32()
                 self.beams[id] = Beam(self.br, self.frame, self.scale, collection, self.mod)
@@ -2048,7 +2183,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
             texinfo = self.bsp.texinfo[face.texinfo_index]
             surf_texture = self.bsp.textures[texinfo.texture_index]
             if surf_texture is None:
-                #TODO :more specific error
+                #TODO: more specific error
                 raise Exception("texture was none")
 
             s = Vector(texinfo.s)

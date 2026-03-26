@@ -163,7 +163,7 @@ class BspImporter(bpy.types.Operator):
 
     map: bpy.props.StringProperty(
         name="Map",
-        default="c1a0.bsp",
+        default="crossfire.bsp",
     )
 
     scale: bpy.props.FloatProperty(
