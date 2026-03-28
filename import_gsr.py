@@ -6,7 +6,7 @@ import os
 from typing import Any, Optional
 
 import bmesh
-from mathutils import Euler, Matrix, Vector
+from mathutils import Euler, Matrix, Quaternion, Vector
 
 import bpy
 from bpy_extras import anim_utils
@@ -17,7 +17,7 @@ from .binary_reader import BinaryReader
 from .filesystem import FileSystem
 from .import_bsp import Bsp
 from .model import CachedModel, Mod, ModelType
-from .mdl import Sequence, SequenceFlags, SequenceMotionFlags
+from .mdl import Blend, Sequence, SequenceFlags, SequenceMotionFlags
 from .spr import SpriteType
 from .wad import Wad
 from .tga import Tga
@@ -64,6 +64,12 @@ class ObjectField(IntEnum):
     Segments = 23
     RGB = 24
     Brightness = 25
+    PrevSequence = 26
+    SequenceTime = 27
+    PrevSeqBlending = 28
+    PrevAnimTime = 29
+    PrevOrigin = 30
+    PrevAngles = 31
 
 class PlayerField(IntEnum):
     Model = 0
@@ -74,13 +80,14 @@ class GsrReader(BinaryReader):
     def object_fields(self):
         return [self.object_field() for _ in range(self.u8())]
 
+    # TODO: Vector for stuff besides origin and angles
     def object_field(self):
         field_type = self.u8()
         match field_type:
             case ObjectField.Origin:
-                return (ObjectField.Origin, (self.f32(), self.f32(), self.f32()))
+                return (ObjectField.Origin, Vector((self.f32(), self.f32(), self.f32())))
             case ObjectField.Angles:
-                return (ObjectField.Angles, (self.f32(), self.f32(), self.f32()))
+                return (ObjectField.Angles, Vector((self.f32(), self.f32(), self.f32())))
             case ObjectField.Fov:
                 return (ObjectField.Fov, self.f32())
             case ObjectField.Draw:
@@ -131,6 +138,18 @@ class GsrReader(BinaryReader):
                 return (ObjectField.RGB, (self.f32(), self.f32(), self.f32()))
             case ObjectField.Brightness:
                 return (ObjectField.Brightness, self.f32())
+            case ObjectField.PrevSequence:
+                return (ObjectField.PrevSequence, self.i32())
+            case ObjectField.SequenceTime:
+                return (ObjectField.SequenceTime, self.f32())
+            case ObjectField.PrevSeqBlending:
+                return (ObjectField.PrevSeqBlending, [self.u8(), self.u8()])
+            case ObjectField.PrevAnimTime:
+                return (ObjectField.PrevAnimTime, self.f32())
+            case ObjectField.PrevOrigin:
+                return (ObjectField.PrevOrigin, Vector((self.f32(), self.f32(), self.f32())))
+            case ObjectField.PrevAngles:
+                return (ObjectField.PrevAngles, Vector((self.f32(), self.f32(), self.f32())))
 
     def player_fields(self):
         return [self.player_field() for _ in range(self.u8())]
@@ -200,9 +219,9 @@ class Camera:
 
         for field in fields:
             match field:
-                case (ObjectField.Origin, location):
-                    self.origin = location
-                    location = Vector(location) * self.scale
+                case (ObjectField.Origin, origin):
+                    self.origin = origin
+                    location = origin * self.scale
                     self.fcurves["location"].insert(blender_frame, location)
 
                 case (ObjectField.Angles, angles):
@@ -285,21 +304,134 @@ class PlayerModel:
     name: Optional[str] = None
     model: Optional[CachedModel] = None
 
+LEGS_BONES = [
+    "Bip01",
+    "Bip01 Pelvis",
+    "Bip01 L Leg",
+    "Bip01 L Leg1",
+    "Bip01 L Foot",
+    "Bip01 R Leg",
+    "Bip01 R Leg1",
+    "Bip01 R Foot",
+]
+
+@dataclass
+class ActiveObject:
+    fcurve: FCurveBuffer
+    prev_active: bool
+
+@dataclass
+class BoneFCurves:
+    location: FCurveBufferGroup
+    rotation_quaternion: FCurveBufferGroup
+
+class StudioModel:
+    def __init__(self, model_obj: bpy.types.Object, parent_obj: bpy.types.Object):
+        self.object = model_obj
+        obj_action = ActionContext(model_obj)
+
+        self.bone_fcurves_map: dict[str, BoneFCurves] = {}
+        self.bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
+
+        armature_data: bpy.types.Armature = model_obj.data # type: ignore
+        for pose_bone in model_obj.pose.bones: # type: ignore
+            pose_bone: bpy.types.PoseBone
+            pose_bone.rotation_mode = "QUATERNION"
+            bone_name = pose_bone.name
+            bone_string = f"pose.bones[\"{bone_name}\"]"
+            self.bone_fcurves_map[bone_name] = BoneFCurves(
+                location=obj_action.fcurves(bone_string + ".location", 3),
+                rotation_quaternion=obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
+            )
+            data_bone: bpy.types.Bone = armature_data.bones[bone_name]
+            if pose_bone.parent:
+                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
+                local_rest = parent_world.inverted() @ data_bone.matrix_local
+            else:
+                local_rest = data_bone.matrix_local.copy()
+            self.bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
+
+        model_obj["active"] = False
+        self.active_fcurve = obj_action.fcurve('["active"]')
+        self.active_fcurve.insert(1, False)
+
+        self.body_parts: dict[str, ActiveObject] = {}
+        for child in model_obj.children:
+            if child.type != "MESH":
+                continue
+
+            child["body_part_active"] = True
+            child_action = ActionContext(child)
+            body_part_active = ActiveObject(child_action.fcurve('["body_part_active"]'), False)
+            body_part_active.fcurve.insert(1, False)
+            self.body_parts[child.name] = body_part_active
+
+            for path in ["hide_render", "hide_viewport"]:
+                visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
+                visibility_driver.type = "SCRIPTED"
+
+                entity_draw_driver_var = visibility_driver.variables.new()
+                entity_draw_driver_var.name = "entity_draw"
+                entity_draw_driver_var.type = "SINGLE_PROP"
+                entity_draw_driver_var.targets[0].id = parent_obj
+                entity_draw_driver_var.targets[0].data_path = '["draw"]'
+
+                parent_active_model_driver_var = visibility_driver.variables.new()
+                parent_active_model_driver_var.name = "parent_active"
+                parent_active_model_driver_var.type = "SINGLE_PROP"
+                parent_active_model_driver_var.targets[0].id = model_obj
+                parent_active_model_driver_var.targets[0].data_path = '["active"]'
+
+                body_hidden_driver_var = visibility_driver.variables.new()
+                body_hidden_driver_var.name = "body_part_active"
+                body_hidden_driver_var.type = "SINGLE_PROP"
+                body_hidden_driver_var.targets[0].id = child
+                body_hidden_driver_var.targets[0].data_path = '["body_part_active"]'
+
+                visibility_driver.expression = "not (entity_draw and parent_active and body_part_active)"
+
+    def setup_armature(self, obj: bpy.types.Object, obj_action: ActionContext) -> tuple[dict[str, BoneFCurves], dict[str, Matrix]]:
+        bone_fcurves_map: dict[str, BoneFCurves] = {}
+        bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
+
+        armature_data: bpy.types.Armature = obj.data # type: ignore
+        for pose_bone in obj.pose.bones: # type: ignore
+            pose_bone: bpy.types.PoseBone
+            pose_bone.rotation_mode = "QUATERNION"
+            bone_name = pose_bone.name
+            bone_string = f"pose.bones[\"{bone_name}\"]"
+            bone_fcurves_map[bone_name] = BoneFCurves(
+                location=obj_action.fcurves(bone_string + ".location", 3),
+                rotation_quaternion=obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
+            )
+            data_bone: bpy.types.Bone = armature_data.bones[bone_name]
+            if pose_bone.parent:
+                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
+                local_rest = parent_world.inverted() @ data_bone.matrix_local
+            else:
+                local_rest = data_bone.matrix_local.copy()
+            bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
+
+        return bone_fcurves_map, bone_local_rest_matrix_inverse_map
+
+    def flush_fcurves(self):
+        self.active_fcurve.flush()
+        for body_part in self.body_parts.values():
+            body_part.fcurve.flush()
+        for bone_fcurves in self.bone_fcurves_map.values():
+            bone_fcurves.location.flush()
+            bone_fcurves.rotation_quaternion.flush()
+
 class Entity:
-    prev_origin: Optional[tuple[float, float, float]] = None
-    prev_angles: Optional[tuple[float, float, float]] = None
+    prev_origin: Optional[Vector] = None
+    prev_angles: Optional[Vector] = None
     prev_animtime: Optional[float] = None
-    prev_model: Optional[CachedModel] = None
     prev_weaponmodel: Optional[CachedModel] = None
     prev_frame: Optional[float] = None
     prev_scale: Optional[float] = None
     prev_r_blend: Optional[float] = None
 
     weaponmodel: Optional[CachedModel] = None
-
-    prev_gaitorigin: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    gaityaw: float = 0.0
-    gaitframe: float = 0.0
 
     def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, mod: Mod):
         self.blender_scale = scale
@@ -309,6 +441,7 @@ class Entity:
 
         model_index: int = br.u32()
         self.model = mod[model_index]
+        self.prev_model = self.model
         # currententity->number - 1
         self.player_index = br.u8()
         # currententity->player
@@ -316,17 +449,13 @@ class Entity:
 
         # player-specific stuff
         # FIXME: maybe only use this on players?
-        self.weaponmodel_cache: dict[CachedModel, tuple[FCurveBuffer, dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]] = {}
-        # DM_PlayerState[r_playerindex]
-        self.player_model = PlayerModel()
-        self.player_model_cache: dict[CachedModel, tuple[bpy.types.Object, FCurveBuffer, dict[str, FCurveBuffer], dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]] = {}
+        self.loaded_weaponmodels: dict[CachedModel, StudioModel] = {}
+        # player_model_t DM_PlayerState[r_playerindex]
+        self.dm_player_state = PlayerModel()
+        self.loaded_player_models: dict[CachedModel, StudioModel] = {}
 
-        # the model that we render changes at render time, so don't create it if we don't need to
-        # not necessary to do this for anyone but players
-        # if not self.player:
         # REVISIT: wish we could just get unlinked thing back from creation functions
         self.object = self.model.create_object(self.mod, self.blender_scale, collection, no_depth_collection)
-
 
         # HACKHACK: probably should just mark this on the engine side...
         if self.model.type == ModelType.STUDIO and "/v_" in self.model.name:
@@ -371,7 +500,6 @@ class Entity:
             # already exists on sprite object
             self.obj_fcurves["frame"] = obj_action.fcurve('["frame"]')
 
-        # FIXME: combine with above?
         if self.model.type == ModelType.BRUSH:
             self.object["frame"] = 0
             self.obj_fcurves["frame"] = obj_action.fcurve('["frame"]')
@@ -383,120 +511,27 @@ class Entity:
             self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
 
         if self.model.type == ModelType.STUDIO:
-            self.bone_fcurves_map, self.bone_local_rest_matrix_inverse_map = self.setup_armature(self.object, obj_action)
+            self.studio_model = StudioModel(self.object, self.object)
+            # non-player models don't go "inactive" so we set to true by default.
+            # self.prev_model is also set initially so that for player models it
+            # is immediately undone if a submodel is used
+            self.studio_model.active_fcurve.insert(blender_frame, True)
 
-            self.object["active_model"] = True
-            self.active_model_fcurve = obj_action.fcurve('["active_model"]')
-            self.active_model_fcurve.insert(1, False)
-            self.active_model_fcurve.insert(blender_frame, True)
-
-            self.body_part_fcurves: dict[str, FCurveBuffer] = {}
-            for child in self.object.children:
-                if child.type != "MESH":
-                    continue
-
-                child_action = ActionContext(child)
-                fcurve = child_action.fcurve('["body_hidden"]')
-                fcurve.insert(1, True)
-                self.body_part_fcurves[child.name] = fcurve
-
-                child["body_hidden"] = True
-                for path in ["hide_render", "hide_viewport"]:
-                    visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
-                    visibility_driver.type = "SCRIPTED"
-
-                    entity_draw_driver_var = visibility_driver.variables.new()
-                    entity_draw_driver_var.name = "entity_draw"
-                    entity_draw_driver_var.type = "SINGLE_PROP"
-                    entity_draw_driver_var.targets[0].id = self.object
-                    entity_draw_driver_var.targets[0].data_path = '["draw"]'
-
-                    parent_active_model_driver_var = visibility_driver.variables.new()
-                    parent_active_model_driver_var.name = "parent_active_model"
-                    parent_active_model_driver_var.type = "SINGLE_PROP"
-                    parent_active_model_driver_var.targets[0].id = self.object
-                    parent_active_model_driver_var.targets[0].data_path = '["active_model"]'
-
-                    body_hidden_driver_var = visibility_driver.variables.new()
-                    body_hidden_driver_var.name = "body_hidden"
-                    body_hidden_driver_var.type = "SINGLE_PROP"
-                    body_hidden_driver_var.targets[0].id = child
-                    body_hidden_driver_var.targets[0].data_path = '["body_hidden"]'
-
-                    visibility_driver.expression = "not entity_draw or not parent_active_model or body_hidden"
-            # self.mesh_fcurves: dict[str, FCurveBuffer] = {}
-            # for child in self.object.children:
-            #     if child.type != "MESH":
-            #         continue
-            #
-            #     child_action = ActionContext(child)
-            #     fcurve = child_action.fcurve('["body_hidden"]')
-            #     fcurve.insert(1, True)
-            #     self.mesh_fcurves[child.name] = fcurve
-            #
-            # self.bone_fcurves: dict[str, dict[str, list[FCurveBuffer]]] = {}
-            # # _rest_local_inv[bone_name] = inverse of the bone's local rest matrix.
-            # # After armature_apply(), bone.matrix_local is the baked rest pose.
-            # # matrix_basis = rest_local_inv @ animated_local lets us write the
-            # # correct pose without touching Blender's evaluator at all.
-            # self.bone_local_rest_matrix_inverse_map = {}
-            # armature_data: bpy.types.Armature = self.object.data # type: ignore
-            # for pose_bone in self.object.pose.bones: # type: ignore
-            #     pose_bone: bpy.types.PoseBone
-            #     pose_bone.rotation_mode = 'QUATERNION'
-            #     bone_name = pose_bone.name
-            #     bone_string = f"pose.bones[\"{bone_name}\"]"
-            #     loc_fcs = []
-            #     rot_fcs = []
-            #     # FIXME: this needs to be changed on the other end!!!!!!
-            #     for i in range(3):
-            #         loc_fcs.append(obj_action.fcurve(bone_string + ".location", index=i))
-            #     for i in range(4):  # w, x, y, z
-            #         rot_fcs.append(obj_action.fcurve(bone_string + ".rotation_quaternion", index=i))
-            #     self.bone_fcurves[bone_name] = {'loc': loc_fcs, 'rot': rot_fcs}
-            #     bl_bone = armature_data.bones[bone_name]
-            #     if pose_bone.parent:
-            #         parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
-            #         local_rest = parent_world.inverted() @ bl_bone.matrix_local
-            #     else:
-            #         local_rest = bl_bone.matrix_local.copy()
-            #     self.bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
-
+        # Stuff that we can reliably recreate but we could get from the engine sometimes I think
+        self.prevgaitorigin = Vector((0.0, 0.0, 0.0))
+        self.gaityaw = 0.0
+        # STUFF THAT WE'RE SUPPOSED TO GET FROM THE ENGINE BUT DON'T :-)
+        self.gaitframe = 0.0
+        self.controller = [0, 0, 0, 0]
+        self.prevcontroller = [0, 0, 0, 0]
+        self.mouthopen = 0
+        self.blending = [0, 0]
+        self.prevblending = [0, 0]
+        self.prevframe = 0
         self.update(br, blender_frame)
 
-    def setup_armature(self, obj: bpy.types.Object, obj_action: ActionContext) -> tuple[dict[str, dict[str, FCurveBufferGroup]], dict[str, Matrix]]:
-        bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]] = {}
-        bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
-
-        armature_data: bpy.types.Armature = obj.data # type: ignore
-        for pose_bone in obj.pose.bones: # type: ignore
-            pose_bone: bpy.types.PoseBone
-            pose_bone.rotation_mode = "QUATERNION"
-            bone_name = pose_bone.name
-            bone_string = f"pose.bones[\"{bone_name}\"]"
-            # FIXME: custom dataclass or inline definintion? tuple instead?
-            bone_fcurves_map[bone_name] = {}
-            bone_fcurves_map[bone_name]["location"] = obj_action.fcurves(bone_string + ".location", 3)
-            bone_fcurves_map[bone_name]["rotation_quaternion"] = obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
-            data_bone: bpy.types.Bone = armature_data.bones[bone_name]
-            if pose_bone.parent:
-                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
-                local_rest = parent_world.inverted() @ data_bone.matrix_local
-            else:
-                local_rest = data_bone.matrix_local.copy()
-            bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
-
-        return bone_fcurves_map, bone_local_rest_matrix_inverse_map
-
-
     def update(self, br: GsrReader, blender_frame: int):
-        old_animtime = getattr(self, "animtime", None)
-        old_origin = getattr(self, "origin", None)
-        old_angles = getattr(self, "angles", None)
-
         fields = br.object_fields()
-        # if True:
-        #     return
 
         for field in fields:
             match field:
@@ -509,11 +544,6 @@ class Entity:
                 case (ObjectField.Draw, draw):
                     self.draw = draw
                     self.obj_fcurves["draw"].insert(blender_frame, self.draw)
-                    # we don't need to do this because weaponmodels meshes know when to draw now :)
-                    # if self.weaponmodel is not None:
-                    #     cached_weaponmodel = self.weaponmodel_cache.get(self.weaponmodel)
-                    #     if cached_weaponmodel is not None:
-                    #         cached_weaponmodel[0].insert(blender_frame, self.draw)
 
                 case (ObjectField.Sequence, sequence):
                     self.sequence = sequence
@@ -565,39 +595,51 @@ class Entity:
                     else:
                         self.weaponmodel = self.mod[weaponmodel_index]
 
+                case (ObjectField.PrevSequence, prevsequence):
+                    self.prevsequence = prevsequence
+
+                case (ObjectField.SequenceTime, sequencetime):
+                    self.sequencetime = sequencetime
+
+                case (ObjectField.PrevSeqBlending, prevseqblending):
+                    self.prevseqblending = prevseqblending
+
+                case (ObjectField.PrevAnimTime, prevanimtime):
+                    self.prevanimtime = prevanimtime
+
+                case (ObjectField.PrevOrigin, prevorigin):
+                    self.prevorigin = prevorigin
+
+                case (ObjectField.PrevAngles, prevangles):
+                    self.prevangles = prevangles
+
                 case _:
                     print(f"not implimented.... {field}")
-
-        # CL_ProcessEntityUpdate -> R_UpdateLatchedVars
-        # FIXME: CL_CompareTimestamps isn't a simple comparison like we're doing
-        if self.animtime != old_animtime or self.movetype != MoveType.NONE:
-            self.prev_animtime = old_animtime
-            self.prev_origin = old_origin
-            self.prev_angles = old_angles
 
     # R_DrawBrushModel
     def draw_brush_model(self, blender_frame: int):
         # TODO: R_SetRenderMode
 
-        if self.prev_frame is None or self.prev_frame != self.frame:
+        if self.prev_frame != self.frame:
             self.obj_fcurves["frame"].insert(blender_frame, self.frame)
             self.prev_frame = self.frame
 
-        if self.prev_origin is None or self.prev_origin != self.origin:
-            location = Vector(self.origin) * self.blender_scale
+        if self.prev_origin != self.origin:
+            location = self.origin * self.blender_scale
             self.obj_fcurves["location"].insert(blender_frame, location)
-            self.prev_origin = self.origin
+            self.prev_origin = self.origin.copy()
 
-        if self.prev_angles is None or self.prev_angles != self.angles:
+        if self.prev_angles != self.angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
             self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
-            self.prev_angles = self.angles
+            self.prev_angles = self.angles.copy()
 
+    # R_DrawSpriteModel
     def draw_sprite_model(self, blender_frame: int, r_blend: float, camera: Camera):
         scale = self.scale
         if self.rendermode == RenderMode.Glow:
-            origin = Vector(camera.origin) * self.blender_scale
-            target = Vector(self.origin) * self.blender_scale
+            origin = camera.origin * self.blender_scale
+            target = self.origin * self.blender_scale
             direction = target - origin
             distance = direction.length
 
@@ -627,20 +669,20 @@ class Entity:
             #     r_blend *= brightness
             #     scale = goldsrc_dist * 0.005
 
-        if self.prev_r_blend is None or self.prev_r_blend != r_blend:
+        if self.prev_r_blend != r_blend:
             self.obj_fcurves["r_blend"].insert(blender_frame, r_blend)
             self.prev_r_blend = r_blend
 
-        if self.prev_frame is None or self.prev_frame != self.frame:
+        if self.prev_frame != self.frame:
             self.obj_fcurves["frame"].insert(blender_frame, int(self.frame))
             self.prev_frame = self.frame
 
-        if self.prev_origin is None or self.prev_origin != self.origin:
-            location = Vector(self.origin) * self.blender_scale
+        if self.prev_origin != self.origin:
+            location = self.origin * self.blender_scale
             self.obj_fcurves["location"].insert(blender_frame, location)
             self.prev_origin = self.origin
 
-        if self.prev_scale is None or self.prev_scale != scale:
+        if self.prev_scale != scale:
             working_scale = scale
             if working_scale <= 0.0:
                 working_scale = 1.0
@@ -657,111 +699,76 @@ class Entity:
             self.obj_fcurves["rotation_euler"][1].insert(blender_frame, rotation_euler[1])
 
     # R_StudioSetUpTransform
-    def studio_set_up_transform(self, time: float) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-        origin: tuple[float, float, float] = self.origin
-        angles: tuple[float, float, float] = self.angles
+    def studio_set_up_transform(self, time: float) -> tuple[Vector, Vector]:
+        origin = self.origin
+        angles = self.angles
 
         if self.movetype == MoveType.STEP:
             f: float = 0.0
 
-            if self.animtime != (self.prev_animtime or self.animtime):
-                f = (time - self.animtime) / (self.animtime - (self.prev_animtime or time))
+            if time < self.animtime + 1.0 and self.animtime != self.prevanimtime:
+                f = (time - self.animtime) / (self.animtime - self.prevanimtime)
 
+            # assuming r_dointerp is always set...
             f = f - 1.0
 
-            origin = (
-                origin[0] + (self.origin[0] - (self.prev_origin or self.origin)[0]) * f,
-                origin[1] + (self.origin[1] - (self.prev_origin or self.origin)[1]) * f,
-                origin[2] + (self.origin[2] - (self.prev_origin or self.origin)[2]) * f,
-            )
+            origin += (self.origin - self.prevorigin) * f
 
             for i in range(3):
-                d: float = angles[i] - (self.prev_angles or self.angles)[i]
+                ang1 = self.angles[i]
+                ang2 = self.prevangles[i]
+                d = ang1 - ang2
                 if d > 180:
                     d -= 360
                 elif d < -180:
                     d += 360
-                angles = (
-                    angles[0] + (d if i == 0 else 0) * f,
-                    angles[1] + (d if i == 1 else 0) * f,
-                    angles[2] + (d if i == 2 else 0) * f,
-                )
 
-        angles = (-angles[0], angles[1], angles[2])
+                angles[i] += d * f
 
         return origin, angles
 
-    # We should change this to work with movetype follow as well :)
-    # R_StudioMergeBones
-    def apply_weapon_bones(self, blender_frame: int, player_world_mats: dict[int, Matrix], weapon_model: CachedModel, bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]], bone_local_rest_matrix_map: dict[str, Matrix], model: CachedModel) -> None:
-        # build name -> world_mat lookup from player bones
-        player_bones_by_name: dict[str, Matrix] = {
-            model.mdl.bones[bone_idx].name: mat
-            for bone_idx, mat in player_world_mats.items()
-        }
-
-        for bone in weapon_model.mdl.bones:
-            bone_fcurves = bone_fcurves_map.get(bone.name)
-            bone_local_rest_matrix_inverse = bone_local_rest_matrix_map.get(bone.name)
-            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
-                continue
-
-            world_mat = player_bones_by_name.get(bone.name)
-            if world_mat is None:
-                continue
-
-            if bone.parent == -1:
-                animated_local = world_mat
-            else:
-                parent_name = weapon_model.mdl.bones[bone.parent].name
-                parent_world = player_bones_by_name.get(parent_name)
-                if parent_world is None:
-                    continue
-                animated_local: Matrix = parent_world.inverted() @ world_mat
-
-            matrix_basis = bone_local_rest_matrix_inverse @ animated_local
-            location, quaternion, _ = matrix_basis.decompose()
-
-            bone_fcurves["location"].insert(blender_frame, location)
-            bone_fcurves["rotation_quaternion"].insert(blender_frame, quaternion)
-
-    # R_StudioProcessGait, i think?
-    def update_gait(self, time: float, prev_time: float) -> None:
-        dt: float = time - prev_time
+    # R_StudioEstimateGait
+    def studio_estimate_gait(self, time: float, prev_time: float):
+        dt = time - prev_time
         if dt < 0:
             dt = 0.0
         elif dt > 1.0:
             dt = 1.0
 
-        est_velocity: tuple[float, float, float] = (
-            self.origin[0] - self.prev_gaitorigin[0],
-            self.origin[1] - self.prev_gaitorigin[1],
-            self.origin[2] - self.prev_gaitorigin[2],
-        )
-        self.prev_gaitorigin = self.origin
+        # also checks for renderframe but we don't need that in blender land
+        if dt == 0:
+            self.gaitmovement = 0.0
+            return
 
-        gait_movement: float = math.sqrt(est_velocity[0]**2 + est_velocity[1]**2 + est_velocity[2]**2)
+        # TODO: cl_gaitestimation option
+        if True:
+            est_velocity = self.origin - self.prevgaitorigin
+            self.prevgaitorigin = self.origin
+            self.gaitmovement = est_velocity.length
+            if dt <= 0 or self.gaitmovement / dt < 5:
+                self.gaitmovement = 0.0
+                est_velocity[0] = 0.0
+                est_velocity[1] = 0.0
+        else:
+            pass
 
-        if dt <= 0 or gait_movement / dt < 5:
-            gait_movement = 0.0
-            est_velocity = (0.0, 0.0, 0.0)
-
-        if est_velocity[0] == 0.0 and est_velocity[1] == 0.0:
-            flYawDiff: float = self.angles[1] - self.gaityaw
-            flYawDiff = flYawDiff - int(flYawDiff / 360) * 360
-            if flYawDiff > 180:
-                flYawDiff -= 360
-            if flYawDiff < -180:
-                flYawDiff += 360
+        if est_velocity[1] == 0 and est_velocity[0] == 0:
+            fl_yaw_diff = self.angles[1] - self.gaityaw
+            fl_yaw_diff = fl_yaw_diff - int(fl_yaw_diff / 360) * 360
+            if fl_yaw_diff > 180:
+                fl_yaw_diff -= 360
+            if fl_yaw_diff < -180:
+                fl_yaw_diff += 360
 
             if dt < 0.25:
-                flYawDiff *= dt * 4
+                fl_yaw_diff *= dt * 4
             else:
-                flYawDiff *= dt
+                fl_yaw_diff *= dt
 
-            self.gaityaw += flYawDiff
+            self.gaityaw += fl_yaw_diff
             self.gaityaw = self.gaityaw - int(self.gaityaw / 360) * 360
-            gait_movement = 0.0
+
+            self.gaitmovement = 0
         else:
             self.gaityaw = math.atan2(est_velocity[1], est_velocity[0]) * 180.0 / math.pi
             if self.gaityaw > 180:
@@ -769,9 +776,55 @@ class Entity:
             if self.gaityaw < -180:
                 self.gaityaw = -180.0
 
-        gait_sequence = self.model.mdl.sequences[self.gaitsequence]
+    # R_StudioProcessGait
+    def studio_process_gait(self, time: float, prev_time: float, model: CachedModel) -> None:
+        # engine ensures self.sequence is a good index
+        sequence = model.mdl.sequences[self.sequence]
+
+        blend, pitch = self.studio_player_blend(sequence, self.angles[0])
+        self.angles[0] = pitch
+
+        self.prevangles[0] = pitch
+        self.blending[0] = blend
+        self.prevblending[0] = self.blending[0]
+        self.prevseqblending[0] = self.blending[0]
+
+        dt = time - prev_time
+        if dt < 0:
+            dt = 0.0
+        elif dt > 1.0:
+            dt = 1.0
+
+        self.studio_estimate_gait(time, prev_time)
+
+        fl_yaw = self.angles[1] - self.gaityaw
+        fl_yaw = fl_yaw - int(fl_yaw / 360) * 360
+        if fl_yaw < -180:
+            fl_yaw += 360
+        if fl_yaw > 180:
+            fl_yaw -= 360
+
+        if fl_yaw > 120:
+            self.gaityaw -= 180
+            self.gaitmovement = -self.gaitmovement
+            fl_yaw -= 180
+        elif fl_yaw < -120:
+            self.gaityaw += 180
+            self.gaitmovement = -self.gaitmovement
+            fl_yaw += 180
+
+        controller = ((fl_yaw / 4.0) + 30) / (60.0 / 255.0)
+        self.controller = [int(controller), int(controller), int(controller), int(controller)]
+        self.prevcontroller = self.controller.copy()
+
+        self.angles[1] = self.gaityaw
+        if self.angles[1] < -0:
+            self.angles[1] += 360
+        self.prevangles[1] = self.angles[1]
+
+        gait_sequence = model.mdl.sequences[self.gaitsequence]
         if gait_sequence.linear_movement.x > 0:
-            self.gaitframe += (gait_movement / gait_sequence.linear_movement.x) * gait_sequence.num_frames
+            self.gaitframe += (self.gaitmovement / gait_sequence.linear_movement.x) * gait_sequence.num_frames
         else:
             self.gaitframe += gait_sequence.framerate * dt
 
@@ -779,255 +832,258 @@ class Entity:
         if self.gaitframe < 0:
             self.gaitframe += gait_sequence.num_frames
 
+    # R_StudioMergeBones
+    def studio_merge_bones(
+        self,
+        time: float,
+        model: CachedModel,
+        submodel: CachedModel,
+        bone_transform: dict[int, Matrix],
+    ) -> dict[int, Matrix]:
+        # sequence bounds check doesn't get propogated beacuse saveent is used to reset currententity after
+        if self.sequence >= len(submodel.mdl.sequences):
+            sequence = submodel.mdl.sequences[0]
+        else:
+            sequence = submodel.mdl.sequences[self.sequence]
+
+        f = self.studio_estimate_frame(time, sequence)
+
+        anim = sequence.blends[0]
+        pos, q = self.studio_calc_rotations(time, submodel, sequence, anim, f)
+
+        bone_transform_by_name: dict[str, Matrix] = {
+            model.mdl.bones[bone_idx].name: mat
+            for bone_idx, mat in bone_transform.items()
+        }
+
+        submodel_bone_transform: dict[int, Matrix] = {}
+
+        for bone_idx, bone in enumerate(submodel.mdl.bones):
+            bone_matrix = bone_transform_by_name.get(bone.name)
+
+            if bone_matrix is not None:
+                submodel_bone_transform[bone_idx] = bone_matrix
+            else:
+                bone_matrix = (
+                    Matrix.Translation(pos[bone_idx] * self.blender_scale) # type: ignore
+                    @ q[bone_idx].to_matrix().to_4x4()
+                )
+
+                if bone.parent == -1:
+                    submodel_bone_transform[bone_idx] = bone_matrix
+                else:
+                    submodel_bone_transform[bone_idx] = submodel_bone_transform[bone.parent] @ bone_matrix
+
+        return submodel_bone_transform
+
     # R_StudioDrawPlayer
-    def draw_studio_player(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+    def studio_draw_player(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+        # TODO: handle top + bottom color
+
         player_info = players[self.player_index]
-        if self.player_model.name != player_info.model:
-            self.player_model.name = player_info.model
+        if self.dm_player_state.name != player_info.model:
+            self.dm_player_state.name = player_info.model
             model_name = player_info.model
             model = mod.for_name(f"models/player/{model_name}/{model_name}.mdl", False)
             if model is None:
                 model = self.model
-            self.player_model.model = model
+            self.dm_player_state.model = model
 
         # r_model
-        model = self.player_model.model
+        model = self.dm_player_state.model
         if model is None:
-            # engine does the same thing .. maybe it's normal?
-            print("player model was none?!")
+            # Not sure when this case would be called.
+            # self.model always be a sane value from the server
             return
 
-        # not using a submodel
         if model == self.model:
-            result = (self.object, self.active_model_fcurve, self.body_part_fcurves, self.bone_fcurves_map, self.bone_local_rest_matrix_inverse_map)
-        elif model in self.player_model_cache:
-            result = self.player_model_cache[model]
+            # not using a submodel
+            studio_model = self.studio_model
+        elif model in self.loaded_player_models:
+            studio_model = self.loaded_player_models[model]
         else:
             model_obj = model.create_object(self.mod, self.blender_scale, self.collection, None)
             model_obj.parent = self.object
 
-            obj_action = ActionContext(model_obj)
-            armature_data = self.setup_armature(model_obj, obj_action)
+            studio_model = self.loaded_player_models[model] = StudioModel(model_obj, self.object)
 
-            model_obj["active_model"] = True
-            active_model_fcurve = obj_action.fcurve('["active_model"]')
-            active_model_fcurve.insert(1, False)
-
-            body_part_fcurves: dict[str, FCurveBuffer] = {}
-            for child in model_obj.children:
-                if child.type != "MESH":
-                    continue
-
-                child_action = ActionContext(child)
-                fcurve = child_action.fcurve('["body_hidden"]')
-                fcurve.insert(1, True)
-                body_part_fcurves[child.name] = fcurve
-
-                child["body_hidden"] = True
-                for path in ["hide_render", "hide_viewport"]:
-                    visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
-                    visibility_driver.type = "SCRIPTED"
-
-                    entity_draw_driver_var = visibility_driver.variables.new()
-                    entity_draw_driver_var.name = "entity_draw"
-                    entity_draw_driver_var.type = "SINGLE_PROP"
-                    entity_draw_driver_var.targets[0].id = self.object
-                    entity_draw_driver_var.targets[0].data_path = '["draw"]'
-
-                    parent_active_model_driver_var = visibility_driver.variables.new()
-                    parent_active_model_driver_var.name = "parent_active_model"
-                    parent_active_model_driver_var.type = "SINGLE_PROP"
-                    parent_active_model_driver_var.targets[0].id = model_obj
-                    parent_active_model_driver_var.targets[0].data_path = '["active_model"]'
-
-                    body_hidden_driver_var = visibility_driver.variables.new()
-                    body_hidden_driver_var.name = "body_hidden"
-                    body_hidden_driver_var.type = "SINGLE_PROP"
-                    body_hidden_driver_var.targets[0].id = child
-                    body_hidden_driver_var.targets[0].data_path = '["body_hidden"]'
-
-                    visibility_driver.expression = "not entity_draw or not parent_active_model or body_hidden"
-
-            result = (model_obj, active_model_fcurve, body_part_fcurves, *armature_data)
-            self.player_model_cache[model] = result
-
-        model_obj, active_model_fcurve, body_part_fcurves, bone_fcurves, bone_local_rest_matrix_inverse_map = result
-
-        # R_StudioChangePlayerModel (in spirit)
         if model != self.prev_model:
             if self.prev_model is not None:
                 if self.prev_model == self.model:
-                    self.active_model_fcurve.insert(blender_frame, False)
+                    self.studio_model.active_fcurve.insert(blender_frame, False)
                 else:
-                    self.player_model_cache[self.prev_model][1].insert(blender_frame, False)
-            active_model_fcurve.insert(blender_frame, True)
+                    self.loaded_player_models[self.prev_model].active_fcurve.insert(blender_frame, False)
+            studio_model.active_fcurve.insert(blender_frame, True)
             self.prev_model = model
 
-        # TODO: handle top + bottom color
-        origin, angles = self.studio_set_up_transform(time)
-
-        adj: list[float] | None = None
-        gait_sequence_idx: int | None = None
-        gait_frame: float | None = None
-        blending: float = 0.0
-
         if self.gaitsequence:
-            self.update_gait(time, prev_time)
+            orig_angles = self.angles.copy()
 
-            sequence = model.mdl.sequences[self.sequence]
+            self.studio_process_gait(time, prev_time, model)
 
-            blending, pitch = self.studio_player_blend(sequence, angles[0])
+            origin, angles = self.studio_set_up_transform(time)
+            self.angles = orig_angles
+        else:
+            self.controller = [127, 127, 127, 127]
+            self.prevcontroller = self.controller.copy()
 
-            flYaw: float = angles[1] - self.gaityaw
-            flYaw = flYaw - int(flYaw / 360) * 360
-            if flYaw < -180:
-                flYaw += 360
-            if flYaw > 180:
-                flYaw -= 360
-            if flYaw > 120:
-                flYaw -= 180
-            elif flYaw < -120:
-                flYaw += 180
+            origin, angles = self.studio_set_up_transform(time)
 
-            controller: float = ((flYaw / 4.0) + 30) / (60.0 / 255.0)
-            adj = self.studio_calc_bone_adj(controller)
+        # not doing a BBox check right here
 
-            angles = (pitch, self.gaityaw, angles[2])
+        bone_transform = self.studio_set_up_bones(time, model)
 
-            gait_sequence_idx = self.gaitsequence
-            gait_frame = self.gaitframe
+        self.studio_render_model(blender_frame, model, studio_model, bone_transform)
 
-        location = Vector(origin) * self.blender_scale
+        location = origin * self.blender_scale
         self.obj_fcurves["location"].insert(blender_frame, location)
-
-        rotation_euler = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
+        rotation_euler = goldsrc_to_blender_angles(angles)
         self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
-        self.apply_body(blender_frame, model, model_obj, body_part_fcurves)
-
-        f = self.calculate_frame(time)
-        world_mats = self.apply_animation_frame(blender_frame, model, f, bone_fcurves, bone_local_rest_matrix_inverse_map, adj, gait_sequence_idx, gait_frame, blending)
-
         if self.weaponmodel is not None:
-            if self.weaponmodel in self.weaponmodel_cache:
-                result = self.weaponmodel_cache[self.weaponmodel]
+            if self.weaponmodel in self.loaded_weaponmodels:
+                weapon_studio_model = self.loaded_weaponmodels[self.weaponmodel]
             else:
-                weapon_obj = self.weaponmodel.create_object(self.mod, self.blender_scale, self.collection, None)
-                weapon_obj.parent = self.object
+                weaponmodel_obj = self.weaponmodel.create_object(self.mod, self.blender_scale, self.collection, None)
+                weaponmodel_obj.parent = self.object
 
-                obj_action = ActionContext(weapon_obj)
-                armature_data = self.setup_armature(weapon_obj, obj_action)
+                weapon_studio_model = self.loaded_weaponmodels[self.weaponmodel] = StudioModel(weaponmodel_obj, self.object)
 
-                weapon_obj["active_weaponmodel"] = True
-                active_weaponmodel_fcurve = obj_action.fcurve('["active_weaponmodel"]')
-                active_weaponmodel_fcurve.insert(1, False)
-
-                for child in weapon_obj.children:
-                    if child.type != "MESH":
-                        continue
-
-                    # if player weaponmodels can have different body parts, add that logic here
-
-                    for path in ["hide_render", "hide_viewport"]:
-                        visibility_driver: bpy.types.Driver = child.driver_add(path).driver # type: ignore
-                        visibility_driver.type = "SCRIPTED"
-
-                        active_weaponmodel_driver_var = visibility_driver.variables.new()
-                        active_weaponmodel_driver_var.name = "active_weaponmodel"
-                        active_weaponmodel_driver_var.type = "SINGLE_PROP"
-                        active_weaponmodel_driver_var.targets[0].id = weapon_obj
-                        active_weaponmodel_driver_var.targets[0].data_path = '["active_weaponmodel"]'
-
-                        gentity_draw_driver_var = visibility_driver.variables.new()
-                        gentity_draw_driver_var.name = "entity_draw"
-                        gentity_draw_driver_var.type = "SINGLE_PROP"
-                        gentity_draw_driver_var.targets[0].id = self.object
-                        gentity_draw_driver_var.targets[0].data_path = '["draw"]'
-
-                        visibility_driver.expression = "not entity_draw or not active_weaponmodel"
-
-                result = (active_weaponmodel_fcurve, *armature_data)
-                self.weaponmodel_cache[self.weaponmodel] = result
-
-            active_weaponmodel_fcurve, weapon_bone_fcurves_map, weapon_bone_local_rest_matrix_map = result
-
-            self.apply_weapon_bones(blender_frame, world_mats, self.weaponmodel, weapon_bone_fcurves_map, weapon_bone_local_rest_matrix_map, model)
+            weapon_bone_transform = self.studio_merge_bones(time, model, self.weaponmodel, bone_transform)
+            self.studio_render_model(blender_frame, self.weaponmodel, weapon_studio_model, weapon_bone_transform)
 
             if self.weaponmodel != self.prev_weaponmodel:
                 if self.prev_weaponmodel is not None:
-                    self.weaponmodel_cache[self.prev_weaponmodel][0].insert(blender_frame, False)
+                    self.loaded_weaponmodels[self.prev_weaponmodel].active_fcurve.insert(blender_frame, False)
 
-                active_weaponmodel_fcurve.insert(blender_frame, True)
+                weapon_studio_model.active_fcurve.insert(blender_frame, True)
 
             self.prev_weaponmodel = self.weaponmodel
 
         elif self.prev_weaponmodel is not None:
-            self.weaponmodel_cache[self.prev_weaponmodel][0].insert(blender_frame, False)
+            self.loaded_weaponmodels[self.prev_weaponmodel].active_fcurve.insert(blender_frame, False)
 
             self.prev_weaponmodel = None
 
-        # self.prev_origin = self.origin
-        # self.prev_angles = self.angles
-        # self.prev_animtime = self.animtime
+    # R_StudioRenderModel / R_studioRenderFinal / R_GLStudioDrawPoints
+    def studio_render_model(
+        self,
+        blender_frame: int,
+        model: CachedModel,
+        studio_model: StudioModel,
+        bone_transform: dict[int, Matrix],
+    ):
+        # maybe this can be optimized? (only check when model changes, R_StudioChangePlayerModel?)
+        for body_part in model.mdl.body_parts:
+            selected_idx = (self.body // body_part.base) % body_part.num_models
+            for model_idx, body_part_model in enumerate(body_part.models):
+                active = (model_idx == selected_idx)
+                body_part = studio_model.body_parts[f"{studio_model.object.name}_{body_part_model.name}"]
+                if body_part.prev_active != active:
+                    body_part.fcurve.insert(blender_frame, active)
+
+        for bone_idx, bone in enumerate(model.mdl.bones):
+            bone_fcurves = studio_model.bone_fcurves_map.get(bone.name)
+            bone_local_rest_matrix_inverse = studio_model.bone_local_rest_matrix_inverse_map.get(bone.name)
+            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
+                continue
+
+            if bone.parent == -1:
+                animated_local = bone_transform[bone_idx]
+            else:
+                animated_local = bone_transform[bone.parent].inverted() @ bone_transform[bone_idx]
+
+            matrix_basis = bone_local_rest_matrix_inverse @ animated_local
+            location, quaternion, _ = matrix_basis.decompose()
+
+            bone_fcurves.location.insert(blender_frame, location)
+            bone_fcurves.rotation_quaternion.insert(blender_frame, quaternion)
 
     # R_StudioDrawModel
-    def draw_studio_model(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+    def studio_draw_model(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
         if self.renderfx == RenderFx.DeadPlayer:
             if self.renderamt <= 0: # or > cl.maxclients
                 return
 
             # TODO: prevent interp?
             self.player_index = self.renderamt - 1
-            self.draw_studio_player(blender_frame, time, prev_time, players, mod)
+            self.studio_draw_player(blender_frame, time, prev_time, players, mod)
 
             return
+
+        origin, angles = self.studio_set_up_transform(time)
+
+        # not doing a BBox check right here
 
         if self.movetype == MoveType.FOLLOW:
             print("INTERESTING: movetype follow!")
             # TODO
             return
+        else:
+            bone_transform = self.studio_set_up_bones(time, self.model)
 
-        origin, angles = self.studio_set_up_transform(time)
+        self.studio_render_model(blender_frame, self.model, self.studio_model, bone_transform)
 
-        location = Vector(origin) * self.blender_scale
+        location = origin * self.blender_scale
         self.obj_fcurves["location"].insert(blender_frame, location)
 
-        # FIXME: check if the following is true
-        # opengl needs pitch flipped, but blender doesn't. we don't flip earlier beacuse math depends on it (supposedly)
-        rotation_euler = goldsrc_to_blender_angles((-angles[0], angles[1], angles[2]))
+        rotation_euler = goldsrc_to_blender_angles(angles)
         self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
-        self.apply_body(blender_frame, self.model, self.object, self.body_part_fcurves)
+    # R_StudioPlayerBlend
+    def studio_player_blend(self, sequence: Sequence, pitch: float) -> tuple[int, float]:
+        blend = int(pitch * 3.0)
+        if blend < sequence.blend_start[0]:
+            pitch -= sequence.blend_start[0] / 3.0
+            blend = 0
+        elif blend > sequence.blend_end[0]:
+            pitch -= sequence.blend_end[0] / 3.0
+            blend = 255
+        else:
+            if sequence.blend_end[0] - sequence.blend_start[0] < 0.1:
+                blend = 127
+            else:
+                blend = int(255 * (blend - sequence.blend_start[0]) / (sequence.blend_end[0] - sequence.blend_start[0]))
+            pitch = 0.0
 
-        f = self.calculate_frame(time)
-        if f is not None:
-            self.apply_animation_frame(
-                blender_frame,
-                self.model,
-                f,
-                self.bone_fcurves_map,
-                self.bone_local_rest_matrix_inverse_map,
-            )
+        return blend, pitch
 
-        # self.prev_origin = self.origin
-        # self.prev_angles = self.angles
-        # self.prev_animtime = self.animtime
+    # R_StudioCalcBoneAdj
+    def studio_calc_bone_adj(self, model: CachedModel, dadt: float, controller1: list[int], controller2: list[int], mouthopen: int) -> list[float]:
+        adj: list[float] = []
 
-    # TODO: cache these!!!!!!!!!!!
-    # R_StudioRenderFinal right before R_StudioDrawPoints
-    def apply_body(self, blender_frame: int, model: CachedModel, obj: bpy.types.Object, body_part_fcurves: dict[str, FCurveBuffer]):
-        for body_part in model.mdl.body_parts:
-            selected_idx = (self.body // body_part.base) % body_part.num_models
-            for model_idx, body_part_model in enumerate(body_part.models):
-                fcurve = body_part_fcurves[f"{obj.name}_{body_part_model.name}"]
-                hidden = (model_idx != selected_idx)
-                fcurve.insert(blender_frame, hidden)
+        for bc in model.mdl.bone_controllers:
+            if bc.index <= 3:
+                if bc.type & SequenceMotionFlags.RLOOP:
+                    if abs(controller1[bc.index] - controller2[bc.index]) > 128:
+                        a = (controller1[bc.index] + 128) % 256
+                        b = (controller2[bc.index] + 128) % 256
+                        value = ((a * dadt) + (b * (1.0 - dadt)) - 128) * (360.0 / 256.0) + bc.start
+                    else:
+                        value = (controller1[bc.index] * dadt + controller2[bc.index] * (1.0 - dadt)) * (360.0 / 256.0) + bc.start
+                else:
+                    value = (controller1[bc.index] * dadt + controller2[bc.index] * (1.0 - dadt)) / 255.0
+                    value = max(0.0, min(1.0, value))
+                    value = (1.0 - value) * bc.start + value * bc.end
+            else:
+                value = mouthopen / 64.0
+                if value > 1.0:
+                    value = 1.0
+                value = (1.0 - value) * bc.start + value * bc.end
 
-    def calculate_frame(self, time: float) -> float:
-        sequence = self.model.mdl.sequences[self.sequence]
+            axis = bc.type & SequenceMotionFlags.TYPES
+            if axis in (SequenceMotionFlags.XR, SequenceMotionFlags.YR, SequenceMotionFlags.ZR):
+                adj.append(value * (math.pi / 180.0))
+            else:
+                adj.append(value)
 
+        return adj
+
+    # CL_StudioEstimateFrame
+    def studio_estimate_frame(self, time: float, sequence: Sequence) -> float:
         dfdt: float = 0.0
-        if time > self.animtime:
+        # assuming r_dointerp is always set...
+        if time >= self.animtime:
             dfdt = (time - self.animtime) * self.framerate * sequence.framerate
 
         if sequence.num_frames <= 1:
@@ -1050,222 +1106,206 @@ class Entity:
 
         return f
 
-    def studio_player_blend(self, sequence: Sequence, pitch: float) -> tuple[float, float]:
-        blend: float = pitch * 3.0
+    # CL_StudioEstimateInterpolant
+    def studio_estimate_interpolant(self, time: float) -> float:
+        dadt: float = 1.0
+        if self.animtime >= self.prevanimtime + 0.01:
+            dadt = (time - self.animtime) / 0.1
+            if dadt > 2.0:
+                dadt = 2.0
+        return dadt
 
-        if blend < sequence.blend_start[0]:
-            pitch -= sequence.blend_start[0] / 3.0
-            blend = 0.0
-        elif blend > sequence.blend_end[0]:
-            pitch -= sequence.blend_end[0] / 3.0
-            blend = 255.0
-        else:
-            if sequence.blend_end[0] - sequence.blend_start[0] < 0.1:
-                blend = 127.0
-            else:
-                blend = 255.0 * (blend - sequence.blend_start[0]) / (sequence.blend_end[0] - sequence.blend_start[0])
-            pitch = 0.0
-
-        return blend, pitch
-
-    # R_StudioCalcBoneAdj
-    def studio_calc_bone_adj(self, controller_value: float) -> list[float]:
-        adj: list[float] = []
-
-        for bc in self.model.mdl.bone_controllers:
-            if bc.index <= 3:
-                if bc.type & SequenceMotionFlags.RLOOP:
-                    value = controller_value * (360.0 / 256.0) + bc.start
-                else:
-                    value = controller_value / 255.0
-                    value = max(0.0, min(1.0, value))
-                    value = (1.0 - value) * bc.start + value * bc.end
-            else:
-                value = 0.0
-
-            if bc.type & (SequenceMotionFlags.XR | SequenceMotionFlags.YR | SequenceMotionFlags.ZR):
-                adj.append(value * (math.pi / 180.0))
-            else:
-                adj.append(value)
-
-        return adj
-
-    def apply_animation_frame(
+    # R_StudioCalcRotations
+    def studio_calc_rotations(
         self,
-        blender_frame: int,
+        time: float,
         model: CachedModel,
+        sequence: Sequence,
+        anim: Blend,
         f: float,
-        bone_fcurves_map: dict[str, dict[str, FCurveBufferGroup]],
-        bone_local_rest_matrix_inverse_map: dict[str, Matrix],
-        adj: list[float] | None = None,
-        gait_sequence_idx: int | None = None,
-        gait_frame: float | None = None,
-        blending: float = 0.0
-    ) -> dict[int, Matrix]:
-        sequence = model.mdl.sequences[self.sequence]
-        blend = sequence.blends[0]
+    ) -> tuple[list[Vector], list[Quaternion]]:
+        if f > sequence.num_frames - 1:
+            f = 0.0
+        elif f < -0.01:
+            f = -0.01
 
         frame: int = int(f)
+        dadt: float = self.studio_estimate_interpolant(time)
         s: float = f - frame
-        s_inv: float = 1.0 - s
 
-        num_frames: int = len(blend.frames)
-        frame0 = blend.frames[min(frame, num_frames - 1)]
-        frame1 = blend.frames[min(frame + 1, num_frames - 1)]
+        adj = self.studio_calc_bone_adj(model, dadt, self.controller, self.prevcontroller, self.mouthopen)
 
-        frame0b = None
-        frame1b = None
-        bs: float = 0.0
-        bs_inv: float = 1.0
+        num_frames: int = len(anim.frames)
+        frame0 = anim.frames[min(frame, num_frames - 1)]
+        frame1 = anim.frames[min(frame + 1, num_frames - 1)]
 
-        if sequence.num_blends > 1 and blending > 0.0:
-            blend1 = sequence.blends[1]
-            num_frames1: int = len(blend1.frames)
-            frame0b = blend1.frames[min(frame, num_frames1 - 1)]
-            frame1b = blend1.frames[min(frame + 1, num_frames1 - 1)]
-            bs = blending / 255.0
-            bs_inv = 1.0 - bs
+        pos: list[Vector] = []
+        q: list[Quaternion] = []
 
-        sc: float = self.blender_scale
-
-        gait_world_mats: dict[int, Matrix] = {}
-        if gait_sequence_idx is not None and gait_frame is not None:
-            gait_sequence = model.mdl.sequences[gait_sequence_idx]
-            if gait_sequence.blends:
-                gait_blend = gait_sequence.blends[0]
-                gf: int = int(gait_frame)
-                gs: float = gait_frame - gf
-                gs_inv: float = 1.0 - gs
-                gait_num_frames: int = len(gait_blend.frames)
-                gait_frame0 = gait_blend.frames[min(gf, gait_num_frames - 1)]
-                gait_frame1 = gait_blend.frames[min(gf + 1, gait_num_frames - 1)]
-
-                for bone_idx, bone in enumerate(model.mdl.bones):
-                    gp0 = gait_frame0.positions[bone_idx]
-                    gp1 = gait_frame1.positions[bone_idx]
-                    gpx: float = gp0.x * gs_inv + gp1.x * gs
-                    gpy: float = gp0.y * gs_inv + gp1.y * gs
-                    gpz: float = gp0.z * gs_inv + gp1.z * gs
-
-                    gr0 = gait_frame0.rotations[bone_idx]
-                    gr1 = gait_frame1.rotations[bone_idx]
-                    gq1 = Euler((gr0.x, gr0.y, gr0.z), 'XYZ').to_quaternion()
-                    gq2 = Euler((gr1.x, gr1.y, gr1.z), 'XYZ').to_quaternion()
-                    if gq1.dot(gq2) < 0:
-                        gq2 = -gq2 # pyright: ignore[reportOperatorIssue]
-                    gqr = gq1.slerp(gq2, gs)
-
-                    gait_keyframe_mat = (
-                        Matrix.Translation(Vector((gpx, gpy, gpz)) * sc) # pyright: ignore[reportArgumentType]
-                        @ gqr.to_matrix().to_4x4()
-                    )
-
-                    if bone.parent == -1:
-                        gait_world_mats[bone_idx] = gait_keyframe_mat
-                    else:
-                        gait_world_mats[bone_idx] = gait_world_mats[bone.parent] @ gait_keyframe_mat
-
-        world_mats: dict[int, Matrix] = {}
-        found_spine: bool = False
-
-        for bone_idx, bone in enumerate(model.mdl.bones):
-            if gait_world_mats and not found_spine:
-                if bone.name == "Bip01 Spine":
-                    found_spine = True
-                else:
-                    world_mats[bone_idx] = gait_world_mats[bone_idx]
-                    continue
-
+        for bone_idx in range(len(model.mdl.bones)):
             p0 = frame0.positions[bone_idx]
             p1 = frame1.positions[bone_idx]
-            px: float = p0.x * s_inv + p1.x * s
-            py: float = p0.y * s_inv + p1.y * s
-            pz: float = p0.z * s_inv + p1.z * s
+            px: float = p0.x * (1.0 - s) + p1.x * s
+            py: float = p0.y * (1.0 - s) + p1.y * s
+            pz: float = p0.z * (1.0 - s) + p1.z * s
 
             r0 = frame0.rotations[bone_idx]
             r1 = frame1.rotations[bone_idx]
             q1 = Euler((r0.x, r0.y, r0.z), 'XYZ').to_quaternion()
             q2 = Euler((r1.x, r1.y, r1.z), 'XYZ').to_quaternion()
             if q1.dot(q2) < 0:
-                q2 = -q2 # pyright: ignore[reportOperatorIssue]
+                q2 = -q2 # type: ignore
             qr = q1.slerp(q2, s)
 
-            if frame0b is not None and frame1b is not None:
-                p0b = frame0b.positions[bone_idx]
-                p1b = frame1b.positions[bone_idx]
-                px = px * bs_inv + (p0b.x * s_inv + p1b.x * s) * bs
-                py = py * bs_inv + (p0b.y * s_inv + p1b.y * s) * bs
-                pz = pz * bs_inv + (p0b.z * s_inv + p1b.z * s) * bs
+            for adj_idx, bc in enumerate(model.mdl.bone_controllers):
+                if bc.bone == bone_idx:
+                    axis = bc.type & SequenceMotionFlags.TYPES
+                    if axis == SequenceMotionFlags.XR:
+                        qr = qr @ Euler((adj[adj_idx], 0.0, 0.0), 'XYZ').to_quaternion()
+                    elif axis == SequenceMotionFlags.YR:
+                        qr = qr @ Euler((0.0, adj[adj_idx], 0.0), 'XYZ').to_quaternion()
+                    elif axis == SequenceMotionFlags.ZR:
+                        qr = qr @ Euler((0.0, 0.0, adj[adj_idx]), 'XYZ').to_quaternion()
+                    elif axis == SequenceMotionFlags.X:
+                        px += adj[adj_idx]
+                    elif axis == SequenceMotionFlags.Y:
+                        py += adj[adj_idx]
+                    elif axis == SequenceMotionFlags.Z:
+                        pz += adj[adj_idx]
 
-                r0b = frame0b.rotations[bone_idx]
-                r1b = frame1b.rotations[bone_idx]
-                qb1 = Euler((r0b.x, r0b.y, r0b.z), 'XYZ').to_quaternion()
-                qb2 = Euler((r1b.x, r1b.y, r1b.z), 'XYZ').to_quaternion()
-                if qb1.dot(qb2) < 0:
-                    qb2 = -qb2 # pyright: ignore[reportOperatorIssue]
-                qbr = qb1.slerp(qb2, s)
-                if qr.dot(qbr) < 0:
-                    qbr = -qbr # pyright: ignore[reportOperatorIssue]
-                qr = qr.slerp(qbr, bs)
+            pos.append(Vector((px, py, pz)))
+            q.append(qr)
 
-            if adj:
-                adj_euler = Vector((0.0, 0.0, 0.0))
-                for adj_idx, bc in enumerate(model.mdl.bone_controllers):
-                    if bc.bone == bone_idx:
-                        axis = bc.type & SequenceMotionFlags.TYPES
-                        if axis == SequenceMotionFlags.XR:
-                            adj_euler.x += adj[adj_idx]
-                        elif axis == SequenceMotionFlags.YR:
-                            adj_euler.y += adj[adj_idx]
-                        elif axis == SequenceMotionFlags.ZR:
-                            adj_euler.z += adj[adj_idx]
-                        elif axis == SequenceMotionFlags.X:
-                            px += adj[adj_idx]
-                        elif axis == SequenceMotionFlags.Y:
-                            py += adj[adj_idx]
-                        elif axis == SequenceMotionFlags.Z:
-                            pz += adj[adj_idx]
-                if adj_euler.length > 0:
-                    qr = qr @ Euler((adj_euler.x, adj_euler.y, adj_euler.z), 'XYZ').to_quaternion()
+        if sequence.motion_type & SequenceMotionFlags.X:
+            pos[sequence.motion_bone].x = 0.0
+        if sequence.motion_type & SequenceMotionFlags.Y:
+            pos[sequence.motion_bone].y = 0.0
+        if sequence.motion_type & SequenceMotionFlags.Z:
+            pos[sequence.motion_bone].z = 0.0
 
-            if bone.parent == -1:
-                if sequence.num_frames > 1:
-                    t: float = f / (sequence.num_frames - 1)
-                    if sequence.motion_type & SequenceMotionFlags.X:
-                        px += t * sequence.linear_movement.x
-                    if sequence.motion_type & SequenceMotionFlags.Y:
-                        py += t * sequence.linear_movement.y
-                    if sequence.motion_type & SequenceMotionFlags.Z:
-                        pz += t * sequence.linear_movement.z
+        # there is a calculation but it's always set to 0...
+        s = 0.0
+        if sequence.motion_type & SequenceMotionFlags.LX:
+            pos[sequence.motion_bone].x += s * sequence.linear_movement.x
+        if sequence.motion_type & SequenceMotionFlags.LY:
+            pos[sequence.motion_bone].y += s * sequence.linear_movement.y
+        if sequence.motion_type & SequenceMotionFlags.LZ:
+            pos[sequence.motion_bone].z += s * sequence.linear_movement.z
 
-            keyframe_mat = (
-                Matrix.Translation(Vector((px, py, pz)) * sc) # pyright: ignore[reportArgumentType]
-                @ qr.to_matrix().to_4x4()
+        return pos, q
+
+    # R_StudioSlerpBones
+    def studio_slerp_bones(
+        self,
+        q1: list[Quaternion],
+        pos1: list[Vector],
+        q2: list[Quaternion],
+        pos2: list[Vector],
+        s: float,
+    ) -> None:
+        s = max(0.0, min(1.0, s))
+        s1 = 1.0 - s
+        for i in range(len(q1)):
+            q3 = q1[i].slerp(q2[i], s)
+            q1[i] = q3
+            pos1[i] = pos1[i] * s1 + pos2[i] * s
+
+    # R_StudioSetupBones
+    def studio_set_up_bones(
+        self,
+        # blender_frame: int,
+        time: float,
+        model: CachedModel,
+    ) -> dict[int, Matrix]:
+        # engine sets curstate.sequence to 0 if it's higher than the number of sequences
+
+        sequence = model.mdl.sequences[self.sequence]
+
+        f = self.studio_estimate_frame(time, sequence)
+
+        anim = sequence.blends[0] # usually a pointer is passed
+        pos, q = self.studio_calc_rotations(time, model, sequence, anim, f)
+
+        # FIXME: i don't think this is ever called for non-players. so... don't worry about blending from server for now
+        if sequence.num_blends > 1:
+            anim2 = sequence.blends[1]
+            pos2, q2 = self.studio_calc_rotations(time, model, sequence, anim2, f)
+
+            dadt = self.studio_estimate_interpolant(time)
+            s = (self.blending[0] * dadt + self.prevblending[0] * (1.0 - dadt)) / 255.0
+            self.studio_slerp_bones(q, pos, q2, pos2, s)
+
+            if sequence.num_blends == 4:
+                anim3 = sequence.blends[2]
+                pos3, q3 = self.studio_calc_rotations(time, model, sequence, anim3, f)
+
+                anim4 = sequence.blends[3]
+                pos4, q4 = self.studio_calc_rotations(time, model, sequence, anim4, f)
+
+                s = (self.blending[0] * dadt + self.prevblending[0] * (1.0 - dadt)) / 255.0
+                self.studio_slerp_bones(q3, pos3, q4, pos4, s)
+
+                s = (self.blending[1] * dadt + self.prevblending[1] * (1.0 - dadt)) / 255.0
+                self.studio_slerp_bones(q, pos, q3, pos3, s)
+
+        if self.sequencetime and self.sequencetime + 0.2 > time and self.prevsequence < len(model.mdl.sequences):
+            prev_sequence = model.mdl.sequences[self.prevsequence]
+            prev_anim = prev_sequence.blends[0]
+            pos1b, q1b = self.studio_calc_rotations(time, model, prev_sequence, prev_anim, self.prevframe)
+
+            if prev_sequence.num_blends > 1:
+                prev_anim2 = prev_sequence.blends[1]
+                pos2, q2 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim2, self.prevframe)
+                s = self.prevseqblending[0] / 255.0
+                self.studio_slerp_bones(q1b, pos1b, q2, pos2, s)
+
+                if prev_sequence.num_blends == 4:
+                    prev_anim3 = prev_sequence.blends[2]
+                    pos3, q3 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim3, self.prevframe)
+
+                    prev_anim4 = prev_sequence.blends[3]
+                    pos4, q4 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim4, self.prevframe)
+
+                    s = self.prevseqblending[0] / 255.0
+                    self.studio_slerp_bones(q3, pos3, q4, pos4, s)
+
+                    s = self.prevseqblending[1] / 255.0
+                    self.studio_slerp_bones(q1b, pos1b, q3, pos3, s)
+
+            s = 1.0 - (time - self.sequencetime) / 0.2
+            self.studio_slerp_bones(q, pos, q1b, pos1b, s)
+        else:
+            self.prevframe = f
+
+        # USING HLSDK GAIT LOGIC - DIFFERS FROM ENGINE
+        # FIXME: allow different gait logic somehow?
+        if self.gaitsequence != 0:
+            gait_sequence = model.mdl.sequences[self.gaitsequence]
+            gait_anim = gait_sequence.blends[0]
+            pos2, q2 = self.studio_calc_rotations(time, model, gait_sequence, gait_anim, self.gaitframe)
+
+            for i, bone in enumerate(model.mdl.bones):
+                for leg_bone in LEGS_BONES:
+                    if bone.name != leg_bone:
+                        continue
+                    pos[i] = pos2[i]
+                    q[i] = q2[i]
+                    break
+
+        bone_transform: dict[int, Matrix] = {}
+
+        for bone_idx, bone in enumerate(model.mdl.bones):
+            bone_matrix = (
+                Matrix.Translation(pos[bone_idx] * self.blender_scale) # type: ignore
+                @ q[bone_idx].to_matrix().to_4x4()
             )
 
             if bone.parent == -1:
-                world_mats[bone_idx] = keyframe_mat
+                bone_transform[bone_idx] = bone_matrix
             else:
-                world_mats[bone_idx] = world_mats[bone.parent] @ keyframe_mat
+                bone_transform[bone_idx] = bone_transform[bone.parent] @ bone_matrix
 
-        for bone_idx, bone in enumerate(model.mdl.bones):
-            bone_fcurves = bone_fcurves_map.get(bone.name)
-            bone_local_rest_matrix_inverse = bone_local_rest_matrix_inverse_map.get(bone.name)
-            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
-                continue
-
-            if bone.parent == -1:
-                animated_local = world_mats[bone_idx]
-            else:
-                animated_local: Matrix = world_mats[bone.parent].inverted() @ world_mats[bone_idx]
-
-            matrix_basis = bone_local_rest_matrix_inverse @ animated_local
-            location, quaterion, _ = matrix_basis.decompose()
-
-            bone_fcurves["location"].insert(blender_frame, location)
-            bone_fcurves["rotation_quaternion"].insert(blender_frame, quaterion)
-
-        return world_mats
+        return bone_transform
 
 class BeamType(IntEnum):
     TE_BEAMPOINTS = 0
@@ -1291,13 +1331,13 @@ class FBEAM(IntFlag):
 
 @dataclass
 class BeamParticle:
-    org: tuple[float, float, float]
+    org: Vector
     die: float
     obj: bpy.types.Object
     fcurves: dict[str, Any]
 
 class Beam:
-    prev_source: Optional[tuple[float, float, float]] = None
+    prev_source: Optional[Vector] = None
     prev_delta: Optional[tuple[float, float, float]] = None
     prev_color: Optional[tuple[float, float, float]] = None
     prev_width: Optional[float] = None
@@ -1465,7 +1505,7 @@ class Beam:
     # R_DrawSegs
     def draw_segs(self, blender_frame: int, time: float):
         if self.prev_source is None or self.prev_source != self.source:
-            source = Vector(self.source) * self.blender_scale
+            source = self.source * self.blender_scale
             self.obj_fcurves["source"].insert(blender_frame, source)
             self.prev_source = self.source
 
@@ -1510,7 +1550,7 @@ class Beam:
     def draw_beam_follow(self, blender_frame: int, time: float, collection):
         if self.flags & FBEAM.STARTENTITY:
             last_org = self.particles[0].org if self.particles else None
-            if last_org is None or (Vector(self.source) - Vector(last_org)).length >= 32:
+            if last_org is None or (self.source - last_org).length >= 32:
                 material = self.model.spr.ensure_beamfollow_material(self.model.name)
                 obj, fcurves = self._create_beam_particle_object(collection, material)
                 particle = BeamParticle(
@@ -1537,9 +1577,9 @@ class Beam:
             current = active[i]
             next_p = active[i + 1]
 
-            source = Vector(current.org) * self.blender_scale
-            raw_delta = Vector(next_p.org) - Vector(current.org)
-            delta = Vector(raw_delta) * self.blender_scale # pyright: ignore[reportArgumentType]
+            source = current.org * self.blender_scale
+            raw_delta = next_p.org - current.org
+            delta = raw_delta * self.blender_scale # pyright: ignore[reportArgumentType]
             brightness_start = max(0.0, (current.die - time) / self.amplitude)
             brightness_end = 0.0 if next_p is active[-1] else max(0.0, (next_p.die - time) / self.amplitude)
 
@@ -1839,7 +1879,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         ]
 
         # because python classes share default :)))))))))))
-        self.mod: Mod = Mod()
+        self.mod: Mod = Mod(self.fs)
         self.camera: Optional[Camera] = None
         self.entities: dict[int, Entity] = {}
         self.beams: dict[int, Beam] = {}
@@ -1954,9 +1994,9 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     print("We don't know how to draw alias model!")
                 elif entity.model.type == ModelType.STUDIO:
                     if entity.player:
-                        entity.draw_studio_player(self.frame, self.time, self.prev_time, self.players, self.mod)
+                        entity.studio_draw_player(self.frame, self.time, self.prev_time, self.players, self.mod)
                     else:
-                        entity.draw_studio_model(self.frame, self.time, self.prev_time, self.players, self.mod)
+                        entity.studio_draw_model(self.frame, self.time, self.prev_time, self.players, self.mod)
 
             for beam in self.beams.values():
                 if not beam.draw:
@@ -2018,9 +2058,6 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
                     images.append(image)
 
-                # FIXME: remove if it's always true :)
-                assert len(images) == 6
-
                 sky_material: Optional[bpy.types.Material] = bpy.data.materials.get("sky")
                 if sky_material is not None:
                     node_tree = sky_material.node_tree
@@ -2045,36 +2082,21 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                 fcurve.flush()
 
         for entity in self.entities.values():
-            for fcurve in entity.obj_fcurves.values():
+            for name, fcurve in entity.obj_fcurves.items():
                 fcurve: FCurveBuffer | FCurveBufferGroup
+                # if name == "location":
+                #     print(f"{name} is being flushed on {entity.object.name}")
+                #     print(fcurve._buffers[0]._values)
                 fcurve.flush()
 
             if entity.model.type == ModelType.STUDIO:
-                entity.active_model_fcurve.flush()
-                for fcurve in entity.body_part_fcurves.values():
-                    fcurve.flush()
+                entity.studio_model.flush_fcurves()
 
-                for bone_fcurves in entity.bone_fcurves_map.values():
-                    for fcurve_group in bone_fcurves.values():
-                        fcurve_group.flush()
+                for studio_model in entity.loaded_player_models.values():
+                    studio_model.flush_fcurves()
 
-                # FIXME: only on players
-                for (_, active_model_fcurve, body_part_fcurves, bone_fcurves_map, _) in entity.player_model_cache.values():
-                    active_model_fcurve.flush()
-                    for fcurve in body_part_fcurves.values():
-                        fcurve.flush()
-
-                    for bone_fcurves in bone_fcurves_map.values():
-                        for fcurve_group in bone_fcurves.values():
-                            fcurve_group.flush()
-
-            # FIXME: only on players
-            for (active_weaponmodel_fcurve, weapon_bone_fcurves_map, _) in entity.weaponmodel_cache.values():
-                active_weaponmodel_fcurve.flush()
-
-                for weapon_bone_fcurves in weapon_bone_fcurves_map.values():
-                    for fcurve_group in weapon_bone_fcurves.values():
-                        fcurve_group.flush()
+                for weapon_studio_model in entity.loaded_weaponmodels.values():
+                    weapon_studio_model.flush_fcurves()
 
         for beam in self.beams.values():
             if beam.type == BeamType.TE_BEAMPOINTS:
@@ -2183,8 +2205,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
             texinfo = self.bsp.texinfo[face.texinfo_index]
             surf_texture = self.bsp.textures[texinfo.texture_index]
             if surf_texture is None:
-                #TODO: more specific error
-                raise Exception("texture was none")
+                raise Exception("decal face texinfo texture was None!")
 
             s = Vector(texinfo.s)
             t = Vector(texinfo.t)

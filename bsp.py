@@ -535,8 +535,7 @@ class Bsp:
                 face_texinfo = self.texinfo[face.texinfo_index]
                 texture = self.textures[face_texinfo.texture_index]
                 if texture is None:
-                    #TODO: more specific error
-                    raise Exception("texture was none")
+                    raise Exception("bsp face texinfo texture was None!")
 
                 s = Vector(face_texinfo.s)
                 t = Vector(face_texinfo.t)

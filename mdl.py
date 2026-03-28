@@ -447,7 +447,7 @@ class Mdl:
 
         Returns the armature object linked into the active scene collection.
         """
-        armature_obj, bone_transforms = self._get_or_build_armature(scale, collection)
+        armature_obj, bone_transforms = self._get_or_build_armature(scale, collection, name)
 
         for body_part in self.body_parts:
             for body_part_model in body_part.models:
@@ -462,7 +462,7 @@ class Mdl:
     # ------------------------------------------------------------------
 
     def _get_or_build_armature(
-        self, scale: float, collection
+            self, scale: float, collection, name: str
     ) -> Tuple['bpy.types.Object', List]:
         """
         Return (armature_obj linked into the scene, bone_transforms).
@@ -474,12 +474,10 @@ class Mdl:
         """
         import bpy
 
-        model_name = self.header.name
-
         if self._armature_cache is not None:
             # ── fast path: copy the cached data-block ──────────────────────
             arm_copy    = self._armature_cache.data.copy()   # Armature ID copy
-            arm_obj_new = bpy.data.objects.new(model_name, arm_copy)
+            arm_obj_new = bpy.data.objects.new(name, arm_copy)
             collection.objects.link(arm_obj_new)
             arm_obj_new.show_in_front = True
 
@@ -495,8 +493,8 @@ class Mdl:
             return arm_obj_new, self._bone_transforms_cache
 
         # ── slow path: build from scratch ──────────────────────────────────
-        armature     = bpy.data.armatures.new(model_name)
-        armature_obj = bpy.data.objects.new(model_name, armature)
+        armature     = bpy.data.armatures.new(name)
+        armature_obj = bpy.data.objects.new(name, armature)
         # Link temporarily so mode_set works (requires an active object)
         collection.objects.link(armature_obj)
         armature_obj.show_in_front = True

@@ -3,7 +3,12 @@ from typing import BinaryIO, Literal, Optional, overload
 
 import bpy
 
+from .filesystem import FileSystem
+
 class Mod(list['CachedModel']):
+    def __init__(self, fs: FileSystem):
+        self.fs = fs
+
     @overload
     def for_name(self, name: str, crash: Literal[True]) -> 'CachedModel': ...
     @overload
@@ -11,7 +16,14 @@ class Mod(list['CachedModel']):
     def for_name(self, name: str, crash: bool) -> Optional['CachedModel']:
         for mod in self:
             if mod.name == name:
-                return mod
+                file = self.fs.open(name, "rb")
+                if file is None:
+                    if not crash:
+                        print(f"Mod.for_name: {name} not found")
+                        return None
+                else:
+                    mod._file = file
+                    return mod
 
         if crash:
             raise Exception(f"{name} not found")
@@ -20,7 +32,6 @@ class Mod(list['CachedModel']):
 
 from .mdl import Mdl
 from .spr import Spr
-from .filesystem import FileSystem
 
 class ModelType(IntEnum):
     BRUSH = 1
@@ -89,8 +100,13 @@ class CachedModel():
     def create_object(self, mod: Mod, scale: float, collection, no_depth_collection) -> bpy.types.Object:
         match self.type:
             case ModelType.BRUSH:
-                # TODO: ensure that stuff actually exists!
-                obj = bpy.data.objects.get(f"model_{self.name[1:]}")
+                # FIXME: ensure that stuff actually exists!
+                bsp_obj = bpy.data.objects.get(f"model_{self.name[1:]}")
+                obj = bsp_obj.copy()
+                obj.data = bsp_obj.data.copy()
+                obj.name = self.name
+                obj.data.name = self.name
+                collection.objects.link(obj)
                 return obj
             case ModelType.SPRITE:
                 obj = self.spr.create_object(self.name, scale, collection, no_depth_collection)
@@ -98,6 +114,7 @@ class CachedModel():
             case ModelType.ALIAS:
                 print("We don't know how to draw alias!")
                 obj = bpy.data.objects.new("alias_empty", None)
+                collection.objects.link(obj)
                 return obj
             case ModelType.STUDIO:
                 obj = self.mdl.create_object(mod, self.name, self.fs, scale, collection)

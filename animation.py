@@ -53,12 +53,15 @@ class FCurveBufferGroup:
 class ActionContext:
     def __init__(self, id_block: bpy.types.ID):
         anim_data = id_block.animation_data_create()
-        action = bpy.data.actions.new(name=f"{id_block.name}_Action")
-        slot = action.slots.new(id_type=id_block.id_type, name=id_block.name)
-        anim_data.action      = action
-        anim_data.action_slot = slot
+        if anim_data.action is None:
+            action = bpy.data.actions.new(name=f"{id_block.name}_Action")
+            slot = action.slots.new(id_type=id_block.id_type, name=id_block.name)
+            anim_data.action      = action
+            anim_data.action_slot = slot
+        else:
+            action = anim_data.action
+            slot = anim_data.action_slot
         self._cb: bpy.types.ActionChannelbag = anim_utils.action_ensure_channelbag_for_slot(action, slot) # type: ignore
-        # self._buffers: list[FcurveBuffer] = []
 
     def fcurve(self, data_path: str, index: Optional[int] = None) -> FCurveBuffer:
         if index is None:
@@ -66,7 +69,6 @@ class ActionContext:
         else:
             fc: bpy.types.FCurve = self._cb.fcurves.new(data_path, index=index)
         buf = FCurveBuffer(fc)
-        # self._buffers.append(buf)
         return buf
 
     def fcurves(self, data_path: str, count: int) -> FCurveBufferGroup:
