@@ -560,10 +560,10 @@ class Mdl:
             # R_LoadTextures
             if len(self.textures) == 0:
                 texture_file_name = f"{name[:-4]}T.mdl"
-                model = mod.for_name(texture_file_name, False)
-                if model is not None:
+                try:
+                    model = mod.for_name(texture_file_name, True)
                     textures = model.mdl.textures
-                else:
+                except Exception:
                     # HACKHACK: we have to do this because BB check can cause texture not
                     # to be drawn (therefore not added to mod_known) but it will still be
                     # in cl_visedicts meaning we are going to "draw" it :)))

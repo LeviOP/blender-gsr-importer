@@ -175,6 +175,7 @@ class FileSystem:
 
     # FileSystem_SetGameDirectory
     def set_game_directory(self, default_dir: str, game_dir: Optional[str]):
+        # TODO: complete this or don't...
         self.remove_all_serach_paths()
 
 # def resolve_case_insensitive(base_dir: str, relative_path: str) -> Optional[str]:

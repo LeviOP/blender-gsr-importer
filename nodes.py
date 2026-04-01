@@ -1,4 +1,5 @@
 import bpy
+import mathutils
 
 def sprite_color_1_node_group():
     """Initialize Sprite Color node group"""
@@ -2266,7 +2267,7 @@ def new(nodes, name: str) -> bpy.types.ShaderNodeGroup:
 
     return group_node
 
-def create_compositing_nodes(view_layer, no_depth_view_layer, viewmodel_view_layer):
+def create_compositing_nodes(view_layer, no_depth_view_layer):
     bpy.context.scene.compositing_node_group = bpy.data.node_groups.new(type = 'CompositorNodeTree', name = "Compositing Nodetree")
     compositing_nodetree = bpy.context.scene.compositing_node_group
 
@@ -2314,19 +2315,6 @@ def create_compositing_nodes(view_layer, no_depth_view_layer, viewmodel_view_lay
     render_layers_001.name = "Render Layers.001"
     render_layers_001.layer = no_depth_view_layer.name
 
-    # Node Render Layers.002
-    render_layers_002 = compositing_nodetree.nodes.new("CompositorNodeRLayers")
-    render_layers_002.name = "Render Layers.002"
-    render_layers_002.layer = viewmodel_view_layer.name
-
-    # Node Alpha Over
-    alpha_over = compositing_nodetree.nodes.new("CompositorNodeAlphaOver")
-    alpha_over.name = "Alpha Over"
-    # Type
-    alpha_over.inputs[3].default_value = 'Over'
-    # Straight Alpha
-    alpha_over.inputs[4].default_value = False
-
     # Node Math
     math = compositing_nodetree.nodes.new("ShaderNodeMath")
     math.name = "Math"
@@ -2335,14 +2323,39 @@ def create_compositing_nodes(view_layer, no_depth_view_layer, viewmodel_view_lay
     # Value
     math.inputs[0].default_value = 1.0
 
+    # Node Cryptomatte
+    cryptomatte = compositing_nodetree.nodes.new("CompositorNodeCryptomatteV2")
+    cryptomatte.name = "Cryptomatte"
+    cryptomatte.add = mathutils.Color((0.0, 0.0, 0.0))
+    cryptomatte.frame_duration = 0
+    cryptomatte.frame_offset = 0
+    cryptomatte.frame_start = 0
+    cryptomatte.layer_name = 'ViewLayer.CryptoAsset'
+    cryptomatte.matte_id = "viewent"
+    cryptomatte.remove = mathutils.Color((0.0, 0.0, 0.0))
+    cryptomatte.source = 'RENDER'
+    cryptomatte.use_auto_refresh = False
+    cryptomatte.use_cyclic = False
+    # Image
+    cryptomatte.inputs[0].default_value = (0.0, 0.0, 0.0, 1.0)
+
+    # Node Mix
+    mix = compositing_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'ADD'
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+
     # Set locations
-    compositing_nodetree.nodes["Render Layers"].location = (-340.0, 260.0)
-    compositing_nodetree.nodes["Group Output"].location = (400.0, 0.0)
-    compositing_nodetree.nodes["Viewer"].location = (400.0, 60.0)
-    compositing_nodetree.nodes["Render Layers.001"].location = (-340.0, -40.0)
-    compositing_nodetree.nodes["Render Layers.002"].location = (-340.0, -360.0)
-    compositing_nodetree.nodes["Alpha Over"].location = (200.0, 0.0)
-    compositing_nodetree.nodes["Math"].location = (0.0, -220.0)
+    compositing_nodetree.nodes["Render Layers"].location = (-180.0, 120.0)
+    compositing_nodetree.nodes["Group Output"].location = (400.0, 260.0)
+    compositing_nodetree.nodes["Viewer"].location = (400.0, 320.0)
+    compositing_nodetree.nodes["Render Layers.001"].location = (-180.0, -240.0)
+    compositing_nodetree.nodes["Math"].location = (80.0, 260.0)
+    compositing_nodetree.nodes["Cryptomatte"].location = (-180.0, 500.0)
+    compositing_nodetree.nodes["Mix"].location = (240.0, 260.0)
 
     # Set dimensions
     compositing_nodetree.nodes["Render Layers"].width  = 240.0
@@ -2357,72 +2370,88 @@ def create_compositing_nodes(view_layer, no_depth_view_layer, viewmodel_view_lay
     compositing_nodetree.nodes["Render Layers.001"].width  = 240.0
     compositing_nodetree.nodes["Render Layers.001"].height = 100.0
 
-    compositing_nodetree.nodes["Render Layers.002"].width  = 240.0
-    compositing_nodetree.nodes["Render Layers.002"].height = 100.0
-
-    compositing_nodetree.nodes["Alpha Over"].width  = 140.0
-    compositing_nodetree.nodes["Alpha Over"].height = 100.0
-
     compositing_nodetree.nodes["Math"].width  = 140.0
     compositing_nodetree.nodes["Math"].height = 100.0
+
+    compositing_nodetree.nodes["Cryptomatte"].width  = 240.0
+    compositing_nodetree.nodes["Cryptomatte"].height = 100.0
+
+    compositing_nodetree.nodes["Mix"].width  = 140.0
+    compositing_nodetree.nodes["Mix"].height = 100.0
 
 
     # Initialize compositing_nodetree links
 
-    # alpha_over.Image -> viewer.Image
+    # cryptomatte.Matte -> math.Value
     compositing_nodetree.links.new(
-        compositing_nodetree.nodes["Alpha Over"].outputs[0],
-        compositing_nodetree.nodes["Viewer"].inputs[0]
-    )
-    # render_layers_001.Image -> alpha_over.Foreground
-    compositing_nodetree.links.new(
-        compositing_nodetree.nodes["Render Layers.001"].outputs[0],
-        compositing_nodetree.nodes["Alpha Over"].inputs[1]
-    )
-    # render_layers_002.Alpha -> math.Value
-    compositing_nodetree.links.new(
-        compositing_nodetree.nodes["Render Layers.002"].outputs[1],
+        compositing_nodetree.nodes["Cryptomatte"].outputs[1],
         compositing_nodetree.nodes["Math"].inputs[1]
     )
-    # math.Value -> alpha_over.Factor
-    compositing_nodetree.links.new(
-        compositing_nodetree.nodes["Math"].outputs[0],
-        compositing_nodetree.nodes["Alpha Over"].inputs[2]
-    )
-    # alpha_over.Image -> group_output.Image
-    compositing_nodetree.links.new(
-        compositing_nodetree.nodes["Alpha Over"].outputs[0],
-        compositing_nodetree.nodes["Group Output"].inputs[0]
-    )
-    # render_layers.Image -> alpha_over.Background
+    # render_layers.Image -> mix.A
     compositing_nodetree.links.new(
         compositing_nodetree.nodes["Render Layers"].outputs[0],
-        compositing_nodetree.nodes["Alpha Over"].inputs[0]
+        compositing_nodetree.nodes["Mix"].inputs[6]
+    )
+    # render_layers_001.Image -> mix.B
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers.001"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[7]
+    )
+    # mix.Result -> viewer.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Mix"].outputs[2],
+        compositing_nodetree.nodes["Viewer"].inputs[0]
+    )
+    # math.Value -> mix.Factor
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Math"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[0]
+    )
+    # mix.Result -> group_output.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Mix"].outputs[2],
+        compositing_nodetree.nodes["Group Output"].inputs[0]
     )
 
-def setup_sprite_nodes(nodes, links, image, frame_count):
+    return compositing_nodetree
+
+def setup_sprite_nodes(shader_nodetree, image, frame_count):
     # Node Group
-    sprite_color = new(nodes, "Sprite Color")
+    group = shader_nodetree.nodes.new("ShaderNodeGroup")
+    group.name = "Group"
+    group.node_tree = ensure_group("Sprite Color")
 
     # Node Group.001
-    sprite_frame_offset = new(nodes, "Sprite Frame Offset")
-    sprite_frame_offset.inputs[0].default_value = frame_count
+    group_001 = shader_nodetree.nodes.new("ShaderNodeGroup")
+    group_001.name = "Group.001"
+    group_001.node_tree = ensure_group("Sprite Frame Offset")
+    # Socket_1
+    group_001.inputs[0].default_value = frame_count
 
     # Node Image Texture
-    image_texture = nodes.new("ShaderNodeTexImage")
+    image_texture = shader_nodetree.nodes.new("ShaderNodeTexImage")
     image_texture.name = "Image Texture"
+    image_texture.extension = 'CLIP'
     image_texture.image = image
-    image_texture.interpolation = "Closest"
-    image_texture.extension = "CLIP"
+    image_texture.image_user.frame_current = 0
+    image_texture.image_user.frame_duration = 100
+    image_texture.image_user.frame_offset = 0
+    image_texture.image_user.frame_start = 1
+    image_texture.image_user.tile = 0
+    image_texture.image_user.use_auto_refresh = False
+    image_texture.image_user.use_cyclic = False
+    image_texture.interpolation = 'Closest'
+    image_texture.projection = 'FLAT'
+    image_texture.projection_blend = 0.0
 
     # Node Attribute.002
-    attribute_002 = nodes.new("ShaderNodeAttribute")
+    attribute_002 = shader_nodetree.nodes.new("ShaderNodeAttribute")
     attribute_002.name = "Attribute.002"
     attribute_002.attribute_name = "rendermode"
     attribute_002.attribute_type = 'OBJECT'
 
     # Node Mix
-    mix = nodes.new("ShaderNodeMix")
+    mix = shader_nodetree.nodes.new("ShaderNodeMix")
     mix.label = "GL_MODULATE"
     mix.name = "Mix"
     mix.blend_type = 'MULTIPLY'
@@ -2432,13 +2461,13 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     mix.factor_mode = 'UNIFORM'
 
     # Node Emission
-    emission = nodes.new("ShaderNodeEmission")
+    emission = shader_nodetree.nodes.new("ShaderNodeEmission")
     emission.name = "Emission"
     # Strength
     emission.inputs[1].default_value = 1.0
 
     # Node Material Output.001
-    material_output_001 = nodes.new("ShaderNodeOutputMaterial")
+    material_output_001 = shader_nodetree.nodes.new("ShaderNodeOutputMaterial")
     material_output_001.name = "Material Output.001"
     material_output_001.is_active_output = True
     material_output_001.target = 'ALL'
@@ -2448,7 +2477,7 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     material_output_001.inputs[3].default_value = 0.0
 
     # Node Math
-    math = nodes.new("ShaderNodeMath")
+    math = shader_nodetree.nodes.new("ShaderNodeMath")
     math.label = "Is TextureColor"
     math.name = "Math"
     math.operation = 'COMPARE'
@@ -2459,7 +2488,7 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     math.inputs[2].default_value = 0.0
 
     # Node Math.005
-    math_005 = nodes.new("ShaderNodeMath")
+    math_005 = shader_nodetree.nodes.new("ShaderNodeMath")
     math_005.name = "Math.005"
     math_005.operation = 'SUBTRACT'
     math_005.use_clamp = False
@@ -2467,31 +2496,31 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     math_005.inputs[0].default_value = 1.0
 
     # Node Attribute.003
-    attribute_003 = nodes.new("ShaderNodeAttribute")
+    attribute_003 = shader_nodetree.nodes.new("ShaderNodeAttribute")
     attribute_003.name = "Attribute.003"
     attribute_003.attribute_name = "r_blend"
     attribute_003.attribute_type = 'OBJECT'
 
     # Node Math.006
-    math_006 = nodes.new("ShaderNodeMath")
+    math_006 = shader_nodetree.nodes.new("ShaderNodeMath")
     math_006.label = "GL_MOD alpha"
     math_006.name = "Math.006"
     math_006.operation = 'MULTIPLY'
     math_006.use_clamp = False
 
     # Node Mix Shader
-    mix_shader = nodes.new("ShaderNodeMixShader")
+    mix_shader = shader_nodetree.nodes.new("ShaderNodeMixShader")
     mix_shader.label = "GL_BLEND"
     mix_shader.name = "Mix Shader"
 
     # Node Transparent BSDF
-    transparent_bsdf = nodes.new("ShaderNodeBsdfTransparent")
+    transparent_bsdf = shader_nodetree.nodes.new("ShaderNodeBsdfTransparent")
     transparent_bsdf.name = "Transparent BSDF"
     # Color
     transparent_bsdf.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
 
     # Node Math.007
-    math_007 = nodes.new("ShaderNodeMath")
+    math_007 = shader_nodetree.nodes.new("ShaderNodeMath")
     math_007.label = "Is Glow"
     math_007.name = "Math.007"
     math_007.operation = 'COMPARE'
@@ -2502,18 +2531,18 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     math_007.inputs[2].default_value = 0.0
 
     # Node Mix Shader.001
-    mix_shader_001 = nodes.new("ShaderNodeMixShader")
+    mix_shader_001 = shader_nodetree.nodes.new("ShaderNodeMixShader")
     mix_shader_001.label = "Nothing?"
     mix_shader_001.name = "Mix Shader.001"
 
     # Node Transparent BSDF.003
-    transparent_bsdf_003 = nodes.new("ShaderNodeBsdfTransparent")
+    transparent_bsdf_003 = shader_nodetree.nodes.new("ShaderNodeBsdfTransparent")
     transparent_bsdf_003.name = "Transparent BSDF.003"
     # Color
     transparent_bsdf_003.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
 
     # Node Math.008
-    math_008 = nodes.new("ShaderNodeMath")
+    math_008 = shader_nodetree.nodes.new("ShaderNodeMath")
     math_008.label = "Is Additive"
     math_008.name = "Math.008"
     math_008.operation = 'COMPARE'
@@ -2524,23 +2553,23 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     math_008.inputs[2].default_value = 0.0
 
     # Node Add Shader
-    add_shader = nodes.new("ShaderNodeAddShader")
+    add_shader = shader_nodetree.nodes.new("ShaderNodeAddShader")
     add_shader.label = "Additive Rendering"
     add_shader.name = "Add Shader"
 
     # Node Mix Shader.006
-    mix_shader_006 = nodes.new("ShaderNodeMixShader")
+    mix_shader_006 = shader_nodetree.nodes.new("ShaderNodeMixShader")
     mix_shader_006.label = "Additive?"
     mix_shader_006.name = "Mix Shader.006"
 
     # Node Attribute.004
-    attribute_004 = nodes.new("ShaderNodeAttribute")
+    attribute_004 = shader_nodetree.nodes.new("ShaderNodeAttribute")
     attribute_004.name = "Attribute.004"
     attribute_004.attribute_name = "draw_no_depth"
     attribute_004.attribute_type = 'VIEW_LAYER'
 
     # Node Math.009
-    math_009 = nodes.new("ShaderNodeMath")
+    math_009 = shader_nodetree.nodes.new("ShaderNodeMath")
     math_009.label = "Is no_depth"
     math_009.name = "Math.009"
     math_009.operation = 'COMPARE'
@@ -2551,39 +2580,17 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     math_009.inputs[2].default_value = 0.0
 
     # Node Mix Shader.007
-    mix_shader_007 = nodes.new("ShaderNodeMixShader")
+    mix_shader_007 = shader_nodetree.nodes.new("ShaderNodeMixShader")
     mix_shader_007.label = "no_depth?"
     mix_shader_007.name = "Mix Shader.007"
 
     # Node Mix Shader.008
-    mix_shader_008 = nodes.new("ShaderNodeMixShader")
+    mix_shader_008 = shader_nodetree.nodes.new("ShaderNodeMixShader")
     mix_shader_008.label = "Glow"
     mix_shader_008.name = "Mix Shader.008"
 
-    # Node Mix Shader.002
-    mix_shader_002 = nodes.new("ShaderNodeMixShader")
-    mix_shader_002.name = "Mix Shader.002"
-
-    # Node Light Path
-    light_path = nodes.new("ShaderNodeLightPath")
-    light_path.name = "Light Path"
-    light_path.outputs[1].hide = True
-    light_path.outputs[2].hide = True
-    light_path.outputs[3].hide = True
-    light_path.outputs[4].hide = True
-    light_path.outputs[5].hide = True
-    light_path.outputs[6].hide = True
-    light_path.outputs[7].hide = True
-    light_path.outputs[8].hide = True
-    light_path.outputs[9].hide = True
-    light_path.outputs[10].hide = True
-    light_path.outputs[11].hide = True
-    light_path.outputs[12].hide = True
-    light_path.outputs[13].hide = True
-    light_path.outputs[14].hide = True
-
     # Node Diffuse BSDF
-    diffuse_bsdf = nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse_bsdf = shader_nodetree.nodes.new("ShaderNodeBsdfDiffuse")
     diffuse_bsdf.name = "Diffuse BSDF"
     # Roughness
     diffuse_bsdf.inputs[1].default_value = 0.0
@@ -2591,285 +2598,264 @@ def setup_sprite_nodes(nodes, links, image, frame_count):
     diffuse_bsdf.inputs[2].default_value = (0.0, 0.0, 0.0)
 
     # Set locations
-    nodes["Group"].location = (-180.0, -1120.0)
-    sprite_frame_offset.location = (-340.0, -1360.0)
-    nodes["Image Texture"].location = (-180.0, -1220.0)
-    nodes["Attribute.002"].location = (-340.0, -800.0)
-    nodes["Mix"].location = (140.0, -940.0)
-    nodes["Emission"].location = (780.0, -1060.0)
-    nodes["Material Output.001"].location = (1920.0, -940.0)
-    nodes["Math"].location = (-180.0, -940.0)
-    nodes["Math.005"].location = (-20.0, -940.0)
-    nodes["Attribute.003"].location = (140.0, -1180.0)
-    nodes["Math.006"].location = (300.0, -1180.0)
-    nodes["Mix Shader"].location = (460.0, -1060.0)
-    nodes["Transparent BSDF"].location = (300.0, -1080.0)
-    nodes["Math.007"].location = (780.0, -760.0)
-    nodes["Mix Shader.001"].location = (940.0, -940.0)
-    nodes["Transparent BSDF.003"].location = (460.0, -1220.0)
-    nodes["Math.008"].location = (1100.0, -760.0)
-    nodes["Add Shader"].location = (940.0, -1080.0)
-    nodes["Mix Shader.006"].location = (1260.0, -940.0)
-    nodes["Attribute.004"].location = (1420.0, -760.0)
-    nodes["Math.009"].location = (1580.0, -760.0)
-    nodes["Mix Shader.007"].location = (1760.0, -940.0)
-    nodes["Mix Shader.008"].location = (1260.0, -1080.0)
-    nodes["Mix Shader.002"].location = (620.0, -940.0)
-    nodes["Light Path"].location = (460.0, -940.0)
-    nodes["Diffuse BSDF"].location = (300.0, -940.0)
+    shader_nodetree.nodes["Group"].location = (-180.0, -1120.0)
+    shader_nodetree.nodes["Group.001"].location = (-340.0, -1360.0)
+    shader_nodetree.nodes["Image Texture"].location = (-180.0, -1220.0)
+    shader_nodetree.nodes["Attribute.002"].location = (-340.0, -800.0)
+    shader_nodetree.nodes["Mix"].location = (140.0, -940.0)
+    shader_nodetree.nodes["Emission"].location = (460.0, -940.0)
+    shader_nodetree.nodes["Material Output.001"].location = (1760.0, -940.0)
+    shader_nodetree.nodes["Math"].location = (-180.0, -940.0)
+    shader_nodetree.nodes["Math.005"].location = (-20.0, -940.0)
+    shader_nodetree.nodes["Attribute.003"].location = (140.0, -1180.0)
+    shader_nodetree.nodes["Math.006"].location = (300.0, -1180.0)
+    shader_nodetree.nodes["Mix Shader"].location = (460.0, -1060.0)
+    shader_nodetree.nodes["Transparent BSDF"].location = (300.0, -1080.0)
+    shader_nodetree.nodes["Math.007"].location = (620.0, -760.0)
+    shader_nodetree.nodes["Mix Shader.001"].location = (780.0, -940.0)
+    shader_nodetree.nodes["Transparent BSDF.003"].location = (460.0, -1220.0)
+    shader_nodetree.nodes["Math.008"].location = (940.0, -760.0)
+    shader_nodetree.nodes["Add Shader"].location = (780.0, -1080.0)
+    shader_nodetree.nodes["Mix Shader.006"].location = (1100.0, -940.0)
+    shader_nodetree.nodes["Attribute.004"].location = (1260.0, -760.0)
+    shader_nodetree.nodes["Math.009"].location = (1420.0, -760.0)
+    shader_nodetree.nodes["Mix Shader.007"].location = (1600.0, -940.0)
+    shader_nodetree.nodes["Mix Shader.008"].location = (1100.0, -1080.0)
+    shader_nodetree.nodes["Diffuse BSDF"].location = (300.0, -940.0)
 
     # Set dimensions
-    sprite_color.width  = 140.0
-    sprite_color.height = 100.0
+    shader_nodetree.nodes["Group"].width  = 140.0
+    shader_nodetree.nodes["Group"].height = 100.0
 
-    sprite_frame_offset.width  = 140.0
-    sprite_frame_offset.height = 100.0
+    shader_nodetree.nodes["Group.001"].width  = 140.0
+    shader_nodetree.nodes["Group.001"].height = 100.0
 
-    nodes["Image Texture"].width  = 240.0
-    nodes["Image Texture"].height = 100.0
+    shader_nodetree.nodes["Image Texture"].width  = 240.0
+    shader_nodetree.nodes["Image Texture"].height = 100.0
 
-    nodes["Attribute.002"].width  = 140.0
-    nodes["Attribute.002"].height = 100.0
+    shader_nodetree.nodes["Attribute.002"].width  = 140.0
+    shader_nodetree.nodes["Attribute.002"].height = 100.0
 
-    nodes["Mix"].width  = 140.0
-    nodes["Mix"].height = 100.0
+    shader_nodetree.nodes["Mix"].width  = 140.0
+    shader_nodetree.nodes["Mix"].height = 100.0
 
-    nodes["Emission"].width  = 140.0
-    nodes["Emission"].height = 100.0
+    shader_nodetree.nodes["Emission"].width  = 140.0
+    shader_nodetree.nodes["Emission"].height = 100.0
 
-    nodes["Material Output.001"].width  = 140.0
-    nodes["Material Output.001"].height = 100.0
+    shader_nodetree.nodes["Material Output.001"].width  = 140.0
+    shader_nodetree.nodes["Material Output.001"].height = 100.0
 
-    nodes["Math"].width  = 140.0
-    nodes["Math"].height = 100.0
+    shader_nodetree.nodes["Math"].width  = 140.0
+    shader_nodetree.nodes["Math"].height = 100.0
 
-    nodes["Math.005"].width  = 140.0
-    nodes["Math.005"].height = 100.0
+    shader_nodetree.nodes["Math.005"].width  = 140.0
+    shader_nodetree.nodes["Math.005"].height = 100.0
 
-    nodes["Attribute.003"].width  = 140.0
-    nodes["Attribute.003"].height = 100.0
+    shader_nodetree.nodes["Attribute.003"].width  = 140.0
+    shader_nodetree.nodes["Attribute.003"].height = 100.0
 
-    nodes["Math.006"].width  = 140.0
-    nodes["Math.006"].height = 100.0
+    shader_nodetree.nodes["Math.006"].width  = 140.0
+    shader_nodetree.nodes["Math.006"].height = 100.0
 
-    nodes["Mix Shader"].width  = 140.0
-    nodes["Mix Shader"].height = 100.0
+    shader_nodetree.nodes["Mix Shader"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader"].height = 100.0
 
-    nodes["Transparent BSDF"].width  = 140.0
-    nodes["Transparent BSDF"].height = 100.0
+    shader_nodetree.nodes["Transparent BSDF"].width  = 140.0
+    shader_nodetree.nodes["Transparent BSDF"].height = 100.0
 
-    nodes["Math.007"].width  = 140.0
-    nodes["Math.007"].height = 100.0
+    shader_nodetree.nodes["Math.007"].width  = 140.0
+    shader_nodetree.nodes["Math.007"].height = 100.0
 
-    nodes["Mix Shader.001"].width  = 140.0
-    nodes["Mix Shader.001"].height = 100.0
+    shader_nodetree.nodes["Mix Shader.001"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader.001"].height = 100.0
 
-    nodes["Transparent BSDF.003"].width  = 140.0
-    nodes["Transparent BSDF.003"].height = 100.0
+    shader_nodetree.nodes["Transparent BSDF.003"].width  = 140.0
+    shader_nodetree.nodes["Transparent BSDF.003"].height = 100.0
 
-    nodes["Math.008"].width  = 140.0
-    nodes["Math.008"].height = 100.0
+    shader_nodetree.nodes["Math.008"].width  = 140.0
+    shader_nodetree.nodes["Math.008"].height = 100.0
 
-    nodes["Add Shader"].width  = 140.0
-    nodes["Add Shader"].height = 100.0
+    shader_nodetree.nodes["Add Shader"].width  = 140.0
+    shader_nodetree.nodes["Add Shader"].height = 100.0
 
-    nodes["Mix Shader.006"].width  = 140.0
-    nodes["Mix Shader.006"].height = 100.0
+    shader_nodetree.nodes["Mix Shader.006"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader.006"].height = 100.0
 
-    nodes["Attribute.004"].width  = 140.0
-    nodes["Attribute.004"].height = 100.0
+    shader_nodetree.nodes["Attribute.004"].width  = 140.0
+    shader_nodetree.nodes["Attribute.004"].height = 100.0
 
-    nodes["Math.009"].width  = 140.0
-    nodes["Math.009"].height = 100.0
+    shader_nodetree.nodes["Math.009"].width  = 140.0
+    shader_nodetree.nodes["Math.009"].height = 100.0
 
-    nodes["Mix Shader.007"].width  = 140.0
-    nodes["Mix Shader.007"].height = 100.0
+    shader_nodetree.nodes["Mix Shader.007"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader.007"].height = 100.0
 
-    nodes["Mix Shader.008"].width  = 140.0
-    nodes["Mix Shader.008"].height = 100.0
+    shader_nodetree.nodes["Mix Shader.008"].width  = 140.0
+    shader_nodetree.nodes["Mix Shader.008"].height = 100.0
 
-    nodes["Mix Shader.002"].width  = 140.0
-    nodes["Mix Shader.002"].height = 100.0
-
-    nodes["Light Path"].width  = 140.0
-    nodes["Light Path"].height = 100.0
-
-    nodes["Diffuse BSDF"].width  = 140.0
-    nodes["Diffuse BSDF"].height = 100.0
+    shader_nodetree.nodes["Diffuse BSDF"].width  = 140.0
+    shader_nodetree.nodes["Diffuse BSDF"].height = 100.0
 
 
     # Initialize shader_nodetree links
 
     # group_001.Vector -> image_texture.Vector
-    links.new(
-        sprite_frame_offset.outputs[0],
-        nodes["Image Texture"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Group.001"].outputs[0],
+        shader_nodetree.nodes["Image Texture"].inputs[0]
     )
     # attribute_002.Factor -> math.Value
-    links.new(
-        nodes["Attribute.002"].outputs[2],
-        nodes["Math"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[2],
+        shader_nodetree.nodes["Math"].inputs[0]
     )
     # image_texture.Color -> mix.B
-    links.new(
-        nodes["Image Texture"].outputs[0],
-        nodes["Mix"].inputs[7]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[7]
     )
     # group.Result -> mix.A
-    links.new(
-        sprite_color.outputs[0],
-        nodes["Mix"].inputs[6]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Group"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[6]
     )
     # math.Value -> math_005.Value
-    links.new(
-        nodes["Math"].outputs[0],
-        nodes["Math.005"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math"].outputs[0],
+        shader_nodetree.nodes["Math.005"].inputs[1]
     )
     # math_005.Value -> mix.Factor
-    links.new(
-        nodes["Math.005"].outputs[0],
-        nodes["Mix"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.005"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[0]
     )
     # attribute_003.Factor -> math_006.Value
-    links.new(
-        nodes["Attribute.003"].outputs[2],
-        nodes["Math.006"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.003"].outputs[2],
+        shader_nodetree.nodes["Math.006"].inputs[1]
     )
     # image_texture.Alpha -> math_006.Value
-    links.new(
-        nodes["Image Texture"].outputs[1],
-        nodes["Math.006"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Image Texture"].outputs[1],
+        shader_nodetree.nodes["Math.006"].inputs[0]
     )
     # transparent_bsdf.BSDF -> mix_shader.Shader
-    links.new(
-        nodes["Transparent BSDF"].outputs[0],
-        nodes["Mix Shader"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF"].outputs[0],
+        shader_nodetree.nodes["Mix Shader"].inputs[1]
     )
     # math_006.Value -> mix_shader.Factor
-    links.new(
-        nodes["Math.006"].outputs[0],
-        nodes["Mix Shader"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.006"].outputs[0],
+        shader_nodetree.nodes["Mix Shader"].inputs[0]
     )
     # attribute_002.Factor -> math_007.Value
-    links.new(
-        nodes["Attribute.002"].outputs[2],
-        nodes["Math.007"].inputs[0]
-    )
-    # mix_shader.Shader -> mix_shader_001.Shader
-    links.new(
-        nodes["Mix Shader"].outputs[0],
-        nodes["Mix Shader.001"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[2],
+        shader_nodetree.nodes["Math.007"].inputs[0]
     )
     # math_007.Value -> mix_shader_001.Factor
-    links.new(
-        nodes["Math.007"].outputs[0],
-        nodes["Mix Shader.001"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.007"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.001"].inputs[0]
     )
     # attribute_002.Factor -> math_008.Value
-    links.new(
-        nodes["Attribute.002"].outputs[2],
-        nodes["Math.008"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[2],
+        shader_nodetree.nodes["Math.008"].inputs[0]
     )
     # emission.Emission -> add_shader.Shader
-    links.new(
-        nodes["Emission"].outputs[0],
-        nodes["Add Shader"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Emission"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[0]
     )
     # transparent_bsdf_003.BSDF -> add_shader.Shader
-    links.new(
-        nodes["Transparent BSDF.003"].outputs[0],
-        nodes["Add Shader"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF.003"].outputs[0],
+        shader_nodetree.nodes["Add Shader"].inputs[1]
     )
     # math_008.Value -> mix_shader_006.Factor
-    links.new(
-        nodes["Math.008"].outputs[0],
-        nodes["Mix Shader.006"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.008"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.006"].inputs[0]
     )
     # add_shader.Shader -> mix_shader_006.Shader
-    links.new(
-        nodes["Add Shader"].outputs[0],
-        nodes["Mix Shader.006"].inputs[2]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Add Shader"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.006"].inputs[2]
     )
     # mix_shader_001.Shader -> mix_shader_006.Shader
-    links.new(
-        nodes["Mix Shader.001"].outputs[0],
-        nodes["Mix Shader.006"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader.001"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.006"].inputs[1]
     )
     # mix_shader_007.Shader -> material_output_001.Surface
-    links.new(
-        nodes["Mix Shader.007"].outputs[0],
-        nodes["Material Output.001"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader.007"].outputs[0],
+        shader_nodetree.nodes["Material Output.001"].inputs[0]
     )
     # attribute_004.Factor -> math_009.Value
-    links.new(
-        nodes["Attribute.004"].outputs[2],
-        nodes["Math.009"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.004"].outputs[2],
+        shader_nodetree.nodes["Math.009"].inputs[0]
     )
     # mix_shader_006.Shader -> mix_shader_007.Shader
-    links.new(
-        nodes["Mix Shader.006"].outputs[0],
-        nodes["Mix Shader.007"].inputs[1]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader.006"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.007"].inputs[1]
     )
     # math_009.Value -> mix_shader_007.Factor
-    links.new(
-        nodes["Math.009"].outputs[0],
-        nodes["Mix Shader.007"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.009"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.007"].inputs[0]
     )
     # mix_shader_008.Shader -> mix_shader_007.Shader
-    links.new(
-        nodes["Mix Shader.008"].outputs[0],
-        nodes["Mix Shader.007"].inputs[2]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader.008"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.007"].inputs[2]
     )
     # math_007.Value -> mix_shader_008.Factor
-    links.new(
-        nodes["Math.007"].outputs[0],
-        nodes["Mix Shader.008"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.007"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.008"].inputs[0]
     )
     # add_shader.Shader -> mix_shader_008.Shader
-    links.new(
-        nodes["Add Shader"].outputs[0],
-        nodes["Mix Shader.008"].inputs[2]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Add Shader"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.008"].inputs[2]
     )
     # transparent_bsdf_003.BSDF -> mix_shader_008.Shader
-    links.new(
-        nodes["Transparent BSDF.003"].outputs[0],
-        nodes["Mix Shader.008"].inputs[1]
-    )
-    # light_path.Is Camera Ray -> mix_shader_002.Factor
-    links.new(
-        nodes["Light Path"].outputs[0],
-        nodes["Mix Shader.002"].inputs[0]
-    )
-    # mix_shader.Shader -> mix_shader_002.Shader
-    links.new(
-        nodes["Mix Shader"].outputs[0],
-        nodes["Mix Shader.002"].inputs[1]
-    )
-    # transparent_bsdf_003.BSDF -> mix_shader_002.Shader
-    links.new(
-        nodes["Transparent BSDF.003"].outputs[0],
-        nodes["Mix Shader.002"].inputs[2]
-    )
-    # mix_shader_002.Shader -> mix_shader_001.Shader
-    links.new(
-        nodes["Mix Shader.002"].outputs[0],
-        nodes["Mix Shader.001"].inputs[2]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF.003"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.008"].inputs[1]
     )
     # mix.Result -> diffuse_bsdf.Color
-    links.new(
-        nodes["Mix"].outputs[2],
-        nodes["Diffuse BSDF"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Diffuse BSDF"].inputs[0]
     )
     # diffuse_bsdf.BSDF -> mix_shader.Shader
-    links.new(
-        nodes["Diffuse BSDF"].outputs[0],
-        nodes["Mix Shader"].inputs[2]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Diffuse BSDF"].outputs[0],
+        shader_nodetree.nodes["Mix Shader"].inputs[2]
     )
     # mix.Result -> emission.Color
-    links.new(
-        nodes["Mix"].outputs[2],
-        nodes["Emission"].inputs[0]
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Emission"].inputs[0]
     )
+    # mix_shader.Shader -> mix_shader_001.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.001"].inputs[1]
+    )
+    # transparent_bsdf_003.BSDF -> mix_shader_001.Shader
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Transparent BSDF.003"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.001"].inputs[2]
+    )
+
+    return shader_nodetree
 
 def setup_beam_nodes(shader_nodetree, image, frame_count):
     # Node Image Texture
@@ -3056,7 +3042,6 @@ def setup_beam_nodes(shader_nodetree, image, frame_count):
         shader_nodetree.nodes["Add Shader"].outputs[0],
         shader_nodetree.nodes["Mix Shader"].inputs[2]
     )
-
 
 def setup_beamfollow_nodes(shader_nodetree, image, frame_count):
     # Node Image Texture

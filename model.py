@@ -5,51 +5,92 @@ import bpy
 
 from .filesystem import FileSystem
 
-class Mod(list['CachedModel']):
-    def __init__(self, fs: FileSystem):
-        self.fs = fs
-
-    @overload
-    def for_name(self, name: str, crash: Literal[True]) -> 'CachedModel': ...
-    @overload
-    def for_name(self, name: str, crash: Literal[False]) -> Optional['CachedModel']: ...
-    def for_name(self, name: str, crash: bool) -> Optional['CachedModel']:
-        for mod in self:
-            if mod.name == name:
-                file = self.fs.open(name, "rb")
-                if file is None:
-                    if not crash:
-                        print(f"Mod.for_name: {name} not found")
-                        return None
-                else:
-                    mod._file = file
-                    return mod
-
-        if crash:
-            raise Exception(f"{name} not found")
-
-        return None
-
-from .mdl import Mdl
-from .spr import Spr
-
 class ModelType(IntEnum):
     BRUSH = 1
     SPRITE = 2
     ALIAS = 3
     STUDIO = 4
 
+class Mod(list['CachedModel']):
+    def __init__(self, fs: FileSystem):
+        self.fs = fs
+
+    # Mod_FindName
+    # unlike on the engine where this is allocating and can fail,
+    # we should always "find" a model or something has gone wrong
+    def find_name(self, name: str) -> 'CachedModel':
+        for mod in self:
+            if mod.name == name:
+                return mod
+
+        raise Exception(f"Couldn't find model with name \"{name}\"!")
+
+    # Mod_LoadModel
+    @overload
+    def load_model(self, model: CachedModel, crash: Literal[True]) -> 'CachedModel': ...
+    @overload
+    def load_model(self, model: CachedModel, crash: Literal[False]) -> 'CachedModel': ...
+    def load_model(self, model: CachedModel, crash: bool) -> Optional['CachedModel']:
+        if model.loaded:
+            return model
+
+        # TODO: -steam launch option
+        if model.name.startswith("/"):
+            model.name = model.name.lstrip("/")
+
+        file = self.fs.open(model.name, "rb")
+
+        if file is None:
+            if crash:
+                raise Exception(f"Mod_NumForName: {model.name} not found")
+
+            print(f"Error: could not load file {model.name}")
+            return None
+
+        model.loaded = True
+
+        # engine actually loads the files here but I don't want to load things if they are
+        # never actually rendered so we lazily load
+        match file.read(4):
+            case b"IDSO":
+                model.type = ModelType.ALIAS
+            case b"IDSP":
+                model.type = ModelType.SPRITE
+            case b"IDST":
+                model.type = ModelType.STUDIO
+            case _:
+                model.type = ModelType.BRUSH
+
+        model._file = file
+
+        return model
+
+    # Mod_ForName
+    @overload
+    def for_name(self, name: str, crash: Literal[True]) -> 'CachedModel': ...
+    @overload
+    def for_name(self, name: str, crash: Literal[False]) -> Optional['CachedModel']: ...
+    def for_name(self, name: str, crash: bool) -> Optional['CachedModel']:
+        mod = self.find_name(name)
+
+        return self.load_model(mod, crash)
+
+
+from .mdl import Mdl
+from .spr import Spr
+
 class CachedModel():
+    # needload
+    loaded: bool = False
+    # default 0 = mod_brush
+    type: ModelType = ModelType.BRUSH
     _file: BinaryIO | None = None
     @property
     def file(self) -> BinaryIO:
         if self._file is None:
-            self._file = self.fs.open(self.name, "rb")
-            if self._file is None:
-                raise Exception(f"{self.name} not found")
+            raise Exception("Tried to access file without loading model first!")
 
         return self._file
-
 
     _mdl: Mdl | None = None
     @property
@@ -66,32 +107,6 @@ class CachedModel():
             self._spr = Spr.from_file(self.file)
 
         return self._spr
-
-    _type: ModelType | None = None
-    @property
-    def type(self) -> ModelType:
-        if self._type is None:
-            if self.name.startswith("*"):
-                self._type = ModelType.BRUSH
-                return self._type
-
-            # if self.name == "" or self.name.endswith(".bsp"):
-            #     self._type = ModelType.BRUSH
-            #     return self._type
-
-            self.file.seek(0)
-            magic = self.file.read(4)
-            match magic:
-                case b"IDSP":
-                    self._type = ModelType.SPRITE
-                case b"IDPO":
-                    self._type = ModelType.ALIAS
-                case b"IDST":
-                    self._type = ModelType.STUDIO
-                case _:
-                    raise Exception(f"Unknown model type for {self.name}")
-
-        return self._type
 
     def __init__(self, fs: FileSystem, name: str):
         self.name = name

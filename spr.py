@@ -219,15 +219,14 @@ class Spr:
             return bpy.data.materials[name]
 
         material = bpy.data.materials.new(name=name)
-        nodes = material.node_tree.nodes
-        links = material.node_tree.links
+        node_tree = material.node_tree
 
-        nodes.clear()
+        node_tree.nodes.clear()
 
         image = self.ensure_atlas(name)
         frame_count = len(self.frames)
 
-        gsr_nodes.setup_sprite_nodes(nodes, links, image, frame_count)
+        gsr_nodes.setup_sprite_nodes(node_tree, image, frame_count)
 
         return material
 

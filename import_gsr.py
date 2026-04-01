@@ -27,6 +27,7 @@ class ObjectType(IntEnum):
     Camera = 0
     Entity = 1
     Beam = 2
+    ViewEnt = 3
 
 class MessageType(IntEnum):
     AddModels = 0
@@ -70,6 +71,7 @@ class ObjectField(IntEnum):
     PrevAnimTime = 29
     PrevOrigin = 30
     PrevAngles = 31
+    ModelIndex = 32
 
 class PlayerField(IntEnum):
     Model = 0
@@ -150,6 +152,8 @@ class GsrReader(BinaryReader):
                 return (ObjectField.PrevOrigin, Vector((self.f32(), self.f32(), self.f32())))
             case ObjectField.PrevAngles:
                 return (ObjectField.PrevAngles, Vector((self.f32(), self.f32(), self.f32())))
+            case ObjectField.ModelIndex:
+                return (ObjectField.ModelIndex, self.u32())
 
     def player_fields(self):
         return [self.player_field() for _ in range(self.u8())]
@@ -355,6 +359,24 @@ class StudioModel:
         self.active_fcurve = obj_action.fcurve('["active"]')
         self.active_fcurve.insert(1, False)
 
+        for path in ["hide_render", "hide_viewport"]:
+            visibility_driver: bpy.types.Driver = model_obj.driver_add(path).driver # type: ignore
+            visibility_driver.type = "SCRIPTED"
+
+            draw_driver_var = visibility_driver.variables.new()
+            draw_driver_var.name = "draw"
+            draw_driver_var.type = "SINGLE_PROP"
+            draw_driver_var.targets[0].id = parent_obj
+            draw_driver_var.targets[0].data_path = '["draw"]'
+
+            active_model_driver_var = visibility_driver.variables.new()
+            active_model_driver_var.name = "active"
+            active_model_driver_var.type = "SINGLE_PROP"
+            active_model_driver_var.targets[0].id = model_obj
+            active_model_driver_var.targets[0].data_path = '["active"]'
+
+            visibility_driver.expression = "not (draw and active)"
+
         self.body_parts: dict[str, ActiveObject] = {}
         for child in model_obj.children:
             if child.type != "MESH":
@@ -425,27 +447,27 @@ class StudioModel:
 class Entity:
     prev_origin: Optional[Vector] = None
     prev_angles: Optional[Vector] = None
-    prev_animtime: Optional[float] = None
     prev_weaponmodel: Optional[CachedModel] = None
     prev_frame: Optional[float] = None
     prev_scale: Optional[float] = None
     prev_r_blend: Optional[float] = None
 
-    weaponmodel: Optional[CachedModel] = None
-
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, viewmodel_collection, mod: Mod):
+    # CL_LinkPacketEntities, but only for new entities ?
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, mod: Mod):
         self.blender_scale = scale
         # for weaponmodel and submodels (player models)
         self.collection = collection
         self.mod = mod
 
         model_index: int = br.u32()
-        self.model = mod[model_index]
+        # we crash here, unlike the engine with fs_lazy_precache 1, which repeatedly tries to open the file and errors
+        self.model = mod.load_model(mod[model_index], True)
         self.prev_model = self.model
         # currententity->number - 1
         self.player_index = br.u8()
         # currententity->player
         self.player = self.player_index != 255
+
 
         # player-specific stuff
         # FIXME: maybe only use this on players?
@@ -456,15 +478,6 @@ class Entity:
 
         # REVISIT: wish we could just get unlinked thing back from creation functions
         self.object = self.model.create_object(self.mod, self.blender_scale, collection, no_depth_collection)
-
-        # HACKHACK: probably should just mark this on the engine side...
-        if self.model.type == ModelType.STUDIO and "/v_" in self.model.name:
-            viewmodel_collection.objects.link(self.object)
-            for child in self.object.children:
-                if child.type != "MESH":
-                    continue
-                viewmodel_collection.objects.link(child)
-
 
         obj_action = ActionContext(self.object)
 
@@ -484,17 +497,18 @@ class Entity:
         # hide by default
         self.obj_fcurves["draw"].insert(1, False)
 
-        for path in ["hide_render", "hide_viewport"]:
-            visibility_driver: bpy.types.Driver = self.object.driver_add(path).driver # type: ignore
-            visibility_driver.type = "SCRIPTED"
+        if self.model.type != ModelType.STUDIO:
+            for path in ["hide_render", "hide_viewport"]:
+                visibility_driver: bpy.types.Driver = self.object.driver_add(path).driver # type: ignore
+                visibility_driver.type = "SCRIPTED"
 
-            draw_driver_var = visibility_driver.variables.new()
-            draw_driver_var.name = "draw"
-            draw_driver_var.type = "SINGLE_PROP"
-            draw_driver_var.targets[0].id = self.object
-            draw_driver_var.targets[0].data_path = '["draw"]'
+                draw_driver_var = visibility_driver.variables.new()
+                draw_driver_var.name = "draw"
+                draw_driver_var.type = "SINGLE_PROP"
+                draw_driver_var.targets[0].id = self.object
+                draw_driver_var.targets[0].data_path = '["draw"]'
 
-            visibility_driver.expression = "not draw"
+                visibility_driver.expression = "not draw"
 
         if self.model.type == ModelType.SPRITE:
             # already exists on sprite object
@@ -504,11 +518,11 @@ class Entity:
             self.object["frame"] = 0
             self.obj_fcurves["frame"] = obj_action.fcurve('["frame"]')
 
-        if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
+        # if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
             # FIXME: these don't all exist on studio models!
-            self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
-            self.obj_fcurves["r_blend"] = obj_action.fcurve('["r_blend"]')
-            self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
+        self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
+        self.obj_fcurves["r_blend"] = obj_action.fcurve('["r_blend"]')
+        self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
 
         if self.model.type == ModelType.STUDIO:
             self.studio_model = StudioModel(self.object, self.object)
@@ -565,20 +579,20 @@ class Entity:
 
                 case (ObjectField.RenderMode, rendermode):
                     self.rendermode = rendermode
-                    if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
-                        self.obj_fcurves["rendermode"].insert(blender_frame, rendermode)
+                    # if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
+                    self.obj_fcurves["rendermode"].insert(blender_frame, rendermode)
 
                 case (ObjectField.RenderAmt, renderamt):
                     self.renderamt = renderamt
 
                 case (ObjectField.RenderColor, rendercolor):
                     self.rendercolor = rendercolor
-                    if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
-                        if all(c == 0.0 for c in rendercolor):
-                            rendercolor = (1.0, 1.0, 1.0)
-                        else:
-                            rendercolor = (rendercolor[0] / 255.0, rendercolor[1] / 255.0, rendercolor[2] / 255.0)
-                        self.obj_fcurves["rendercolor"].insert(blender_frame, rendercolor)
+                    # if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
+                    if all(c == 0.0 for c in rendercolor):
+                        rendercolor = (1.0, 1.0, 1.0)
+                    else:
+                        rendercolor = (rendercolor[0] / 255.0, rendercolor[1] / 255.0, rendercolor[2] / 255.0)
+                    self.obj_fcurves["rendercolor"].insert(blender_frame, rendercolor)
 
                 case (ObjectField.RenderFx, renderfx):
                     self.renderfx = renderfx
@@ -589,11 +603,8 @@ class Entity:
                 case (ObjectField.MoveType, movetype):
                     self.movetype = MoveType(movetype)
 
-                case (ObjectField.WeaponModel, weaponmodel_index):
-                    if weaponmodel_index is None:
-                        self.weaponmodel = None
-                    else:
-                        self.weaponmodel = self.mod[weaponmodel_index]
+                case (ObjectField.WeaponModel, weaponmodel):
+                    self.weaponmodel = weaponmodel
 
                 case (ObjectField.PrevSequence, prevsequence):
                     self.prevsequence = prevsequence
@@ -612,6 +623,10 @@ class Entity:
 
                 case (ObjectField.PrevAngles, prevangles):
                     self.prevangles = prevangles
+
+                # Entity doesn't use this, but ViewmodelEntity does
+                case (ObjectField.ModelIndex, model_index):
+                    self.model_index = model_index
 
                 case _:
                     print(f"not implimented.... {field}")
@@ -699,15 +714,15 @@ class Entity:
             self.obj_fcurves["rotation_euler"][1].insert(blender_frame, rotation_euler[1])
 
     # R_StudioSetUpTransform
-    def studio_set_up_transform(self, time: float) -> tuple[Vector, Vector]:
+    def studio_set_up_transform(self, cl: Cl) -> tuple[Vector, Vector]:
         origin = self.origin
         angles = self.angles
 
         if self.movetype == MoveType.STEP:
             f: float = 0.0
 
-            if time < self.animtime + 1.0 and self.animtime != self.prevanimtime:
-                f = (time - self.animtime) / (self.animtime - self.prevanimtime)
+            if cl.time < self.animtime + 1.0 and self.animtime != self.prevanimtime:
+                f = (cl.time - self.animtime) / (self.animtime - self.prevanimtime)
 
             # assuming r_dointerp is always set...
             f = f - 1.0
@@ -728,8 +743,8 @@ class Entity:
         return origin, angles
 
     # R_StudioEstimateGait
-    def studio_estimate_gait(self, time: float, prev_time: float):
-        dt = time - prev_time
+    def studio_estimate_gait(self, cl: Cl):
+        dt = cl.time - cl.oldtime
         if dt < 0:
             dt = 0.0
         elif dt > 1.0:
@@ -777,7 +792,7 @@ class Entity:
                 self.gaityaw = -180.0
 
     # R_StudioProcessGait
-    def studio_process_gait(self, time: float, prev_time: float, model: CachedModel) -> None:
+    def studio_process_gait(self, cl: Cl, model: CachedModel) -> None:
         # engine ensures self.sequence is a good index
         sequence = model.mdl.sequences[self.sequence]
 
@@ -789,13 +804,13 @@ class Entity:
         self.prevblending[0] = self.blending[0]
         self.prevseqblending[0] = self.blending[0]
 
-        dt = time - prev_time
+        dt = cl.time - cl.oldtime
         if dt < 0:
             dt = 0.0
         elif dt > 1.0:
             dt = 1.0
 
-        self.studio_estimate_gait(time, prev_time)
+        self.studio_estimate_gait(cl)
 
         fl_yaw = self.angles[1] - self.gaityaw
         fl_yaw = fl_yaw - int(fl_yaw / 360) * 360
@@ -827,7 +842,6 @@ class Entity:
             self.gaitframe += (self.gaitmovement / gait_sequence.linear_movement.x) * gait_sequence.num_frames
         else:
             self.gaitframe += gait_sequence.framerate * dt
-
         self.gaitframe = self.gaitframe - int(self.gaitframe / gait_sequence.num_frames) * gait_sequence.num_frames
         if self.gaitframe < 0:
             self.gaitframe += gait_sequence.num_frames
@@ -835,7 +849,7 @@ class Entity:
     # R_StudioMergeBones
     def studio_merge_bones(
         self,
-        time: float,
+        cl: Cl,
         model: CachedModel,
         submodel: CachedModel,
         bone_transform: dict[int, Matrix],
@@ -846,10 +860,10 @@ class Entity:
         else:
             sequence = submodel.mdl.sequences[self.sequence]
 
-        f = self.studio_estimate_frame(time, sequence)
+        f = self.studio_estimate_frame(cl, sequence)
 
         anim = sequence.blends[0]
-        pos, q = self.studio_calc_rotations(time, submodel, sequence, anim, f)
+        pos, q = self.studio_calc_rotations(cl, submodel, sequence, anim, f)
 
         bone_transform_by_name: dict[str, Matrix] = {
             model.mdl.bones[bone_idx].name: mat
@@ -877,10 +891,10 @@ class Entity:
         return submodel_bone_transform
 
     # R_StudioDrawPlayer
-    def studio_draw_player(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+    def studio_draw_player(self, blender_frame: int, cl: Cl, mod: Mod):
         # TODO: handle top + bottom color
 
-        player_info = players[self.player_index]
+        player_info = cl.players[self.player_index]
         if self.dm_player_state.name != player_info.model:
             self.dm_player_state.name = player_info.model
             model_name = player_info.model
@@ -919,19 +933,19 @@ class Entity:
         if self.gaitsequence:
             orig_angles = self.angles.copy()
 
-            self.studio_process_gait(time, prev_time, model)
+            self.studio_process_gait(cl, model)
 
-            origin, angles = self.studio_set_up_transform(time)
+            origin, angles = self.studio_set_up_transform(cl)
             self.angles = orig_angles
         else:
             self.controller = [127, 127, 127, 127]
             self.prevcontroller = self.controller.copy()
 
-            origin, angles = self.studio_set_up_transform(time)
+            origin, angles = self.studio_set_up_transform(cl)
 
         # not doing a BBox check right here
 
-        bone_transform = self.studio_set_up_bones(time, model)
+        bone_transform = self.studio_set_up_bones(cl, model)
 
         self.studio_render_model(blender_frame, model, studio_model, bone_transform)
 
@@ -941,24 +955,28 @@ class Entity:
         self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
         if self.weaponmodel is not None:
-            if self.weaponmodel in self.loaded_weaponmodels:
-                weapon_studio_model = self.loaded_weaponmodels[self.weaponmodel]
+            weaponmodel = cl.get_model_by_index(self.weaponmodel)
+            # equivalent of engine calling Mod_Extradata, which calls Mod_LoadModel with crash = true and Sys_Error if cache is empty
+            if weaponmodel is None:
+                raise Exception("Couldn't load weaponmodel!")
+            if weaponmodel in self.loaded_weaponmodels:
+                weapon_studio_model = self.loaded_weaponmodels[weaponmodel]
             else:
-                weaponmodel_obj = self.weaponmodel.create_object(self.mod, self.blender_scale, self.collection, None)
+                weaponmodel_obj = weaponmodel.create_object(self.mod, self.blender_scale, self.collection, None)
                 weaponmodel_obj.parent = self.object
 
-                weapon_studio_model = self.loaded_weaponmodels[self.weaponmodel] = StudioModel(weaponmodel_obj, self.object)
+                weapon_studio_model = self.loaded_weaponmodels[weaponmodel] = StudioModel(weaponmodel_obj, self.object)
 
-            weapon_bone_transform = self.studio_merge_bones(time, model, self.weaponmodel, bone_transform)
-            self.studio_render_model(blender_frame, self.weaponmodel, weapon_studio_model, weapon_bone_transform)
+            weapon_bone_transform = self.studio_merge_bones(cl, model, weaponmodel, bone_transform)
+            self.studio_render_model(blender_frame, weaponmodel, weapon_studio_model, weapon_bone_transform)
 
-            if self.weaponmodel != self.prev_weaponmodel:
+            if weaponmodel != self.prev_weaponmodel:
                 if self.prev_weaponmodel is not None:
                     self.loaded_weaponmodels[self.prev_weaponmodel].active_fcurve.insert(blender_frame, False)
 
                 weapon_studio_model.active_fcurve.insert(blender_frame, True)
 
-            self.prev_weaponmodel = self.weaponmodel
+            self.prev_weaponmodel = weaponmodel
 
         elif self.prev_weaponmodel is not None:
             self.loaded_weaponmodels[self.prev_weaponmodel].active_fcurve.insert(blender_frame, False)
@@ -1000,18 +1018,18 @@ class Entity:
             bone_fcurves.rotation_quaternion.insert(blender_frame, quaternion)
 
     # R_StudioDrawModel
-    def studio_draw_model(self, blender_frame: int, time: float, prev_time: float, players: list[PlayerInfo], mod: Mod):
+    def studio_draw_model(self, blender_frame: int, cl: Cl, mod: Mod):
         if self.renderfx == RenderFx.DeadPlayer:
             if self.renderamt <= 0: # or > cl.maxclients
                 return
 
             # TODO: prevent interp?
             self.player_index = self.renderamt - 1
-            self.studio_draw_player(blender_frame, time, prev_time, players, mod)
+            self.studio_draw_player(blender_frame, cl, mod)
 
             return
 
-        origin, angles = self.studio_set_up_transform(time)
+        origin, angles = self.studio_set_up_transform(cl)
 
         # not doing a BBox check right here
 
@@ -1020,7 +1038,7 @@ class Entity:
             # TODO
             return
         else:
-            bone_transform = self.studio_set_up_bones(time, self.model)
+            bone_transform = self.studio_set_up_bones(cl, self.model)
 
         self.studio_render_model(blender_frame, self.model, self.studio_model, bone_transform)
 
@@ -1080,11 +1098,11 @@ class Entity:
         return adj
 
     # CL_StudioEstimateFrame
-    def studio_estimate_frame(self, time: float, sequence: Sequence) -> float:
+    def studio_estimate_frame(self, cl: Cl, sequence: Sequence) -> float:
         dfdt: float = 0.0
         # assuming r_dointerp is always set...
-        if time >= self.animtime:
-            dfdt = (time - self.animtime) * self.framerate * sequence.framerate
+        if cl.time >= self.animtime:
+            dfdt = (cl.time - self.animtime) * self.framerate * sequence.framerate
 
         if sequence.num_frames <= 1:
             f: float = 0.0
@@ -1107,10 +1125,10 @@ class Entity:
         return f
 
     # CL_StudioEstimateInterpolant
-    def studio_estimate_interpolant(self, time: float) -> float:
+    def studio_estimate_interpolant(self, cl: Cl) -> float:
         dadt: float = 1.0
         if self.animtime >= self.prevanimtime + 0.01:
-            dadt = (time - self.animtime) / 0.1
+            dadt = (cl.time - self.animtime) / 0.1
             if dadt > 2.0:
                 dadt = 2.0
         return dadt
@@ -1118,7 +1136,7 @@ class Entity:
     # R_StudioCalcRotations
     def studio_calc_rotations(
         self,
-        time: float,
+        cl: Cl,
         model: CachedModel,
         sequence: Sequence,
         anim: Blend,
@@ -1130,7 +1148,7 @@ class Entity:
             f = -0.01
 
         frame: int = int(f)
-        dadt: float = self.studio_estimate_interpolant(time)
+        dadt: float = self.studio_estimate_interpolant(cl)
         s: float = f - frame
 
         adj = self.studio_calc_bone_adj(model, dadt, self.controller, self.prevcontroller, self.mouthopen)
@@ -1213,34 +1231,33 @@ class Entity:
     # R_StudioSetupBones
     def studio_set_up_bones(
         self,
-        # blender_frame: int,
-        time: float,
+        cl: Cl,
         model: CachedModel,
     ) -> dict[int, Matrix]:
         # engine sets curstate.sequence to 0 if it's higher than the number of sequences
 
         sequence = model.mdl.sequences[self.sequence]
 
-        f = self.studio_estimate_frame(time, sequence)
+        f = self.studio_estimate_frame(cl, sequence)
 
         anim = sequence.blends[0] # usually a pointer is passed
-        pos, q = self.studio_calc_rotations(time, model, sequence, anim, f)
+        pos, q = self.studio_calc_rotations(cl, model, sequence, anim, f)
 
         # FIXME: i don't think this is ever called for non-players. so... don't worry about blending from server for now
         if sequence.num_blends > 1:
             anim2 = sequence.blends[1]
-            pos2, q2 = self.studio_calc_rotations(time, model, sequence, anim2, f)
+            pos2, q2 = self.studio_calc_rotations(cl, model, sequence, anim2, f)
 
-            dadt = self.studio_estimate_interpolant(time)
+            dadt = self.studio_estimate_interpolant(cl)
             s = (self.blending[0] * dadt + self.prevblending[0] * (1.0 - dadt)) / 255.0
             self.studio_slerp_bones(q, pos, q2, pos2, s)
 
             if sequence.num_blends == 4:
                 anim3 = sequence.blends[2]
-                pos3, q3 = self.studio_calc_rotations(time, model, sequence, anim3, f)
+                pos3, q3 = self.studio_calc_rotations(cl, model, sequence, anim3, f)
 
                 anim4 = sequence.blends[3]
-                pos4, q4 = self.studio_calc_rotations(time, model, sequence, anim4, f)
+                pos4, q4 = self.studio_calc_rotations(cl, model, sequence, anim4, f)
 
                 s = (self.blending[0] * dadt + self.prevblending[0] * (1.0 - dadt)) / 255.0
                 self.studio_slerp_bones(q3, pos3, q4, pos4, s)
@@ -1248,23 +1265,23 @@ class Entity:
                 s = (self.blending[1] * dadt + self.prevblending[1] * (1.0 - dadt)) / 255.0
                 self.studio_slerp_bones(q, pos, q3, pos3, s)
 
-        if self.sequencetime and self.sequencetime + 0.2 > time and self.prevsequence < len(model.mdl.sequences):
+        if self.sequencetime and self.sequencetime + 0.2 > cl.time and self.prevsequence < len(model.mdl.sequences):
             prev_sequence = model.mdl.sequences[self.prevsequence]
             prev_anim = prev_sequence.blends[0]
-            pos1b, q1b = self.studio_calc_rotations(time, model, prev_sequence, prev_anim, self.prevframe)
+            pos1b, q1b = self.studio_calc_rotations(cl, model, prev_sequence, prev_anim, self.prevframe)
 
             if prev_sequence.num_blends > 1:
                 prev_anim2 = prev_sequence.blends[1]
-                pos2, q2 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim2, self.prevframe)
+                pos2, q2 = self.studio_calc_rotations(cl, model, prev_sequence, prev_anim2, self.prevframe)
                 s = self.prevseqblending[0] / 255.0
                 self.studio_slerp_bones(q1b, pos1b, q2, pos2, s)
 
                 if prev_sequence.num_blends == 4:
                     prev_anim3 = prev_sequence.blends[2]
-                    pos3, q3 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim3, self.prevframe)
+                    pos3, q3 = self.studio_calc_rotations(cl, model, prev_sequence, prev_anim3, self.prevframe)
 
                     prev_anim4 = prev_sequence.blends[3]
-                    pos4, q4 = self.studio_calc_rotations(time, model, prev_sequence, prev_anim4, self.prevframe)
+                    pos4, q4 = self.studio_calc_rotations(cl, model, prev_sequence, prev_anim4, self.prevframe)
 
                     s = self.prevseqblending[0] / 255.0
                     self.studio_slerp_bones(q3, pos3, q4, pos4, s)
@@ -1272,7 +1289,7 @@ class Entity:
                     s = self.prevseqblending[1] / 255.0
                     self.studio_slerp_bones(q1b, pos1b, q3, pos3, s)
 
-            s = 1.0 - (time - self.sequencetime) / 0.2
+            s = 1.0 - (cl.time - self.sequencetime) / 0.2
             self.studio_slerp_bones(q, pos, q1b, pos1b, s)
         else:
             self.prevframe = f
@@ -1282,7 +1299,7 @@ class Entity:
         if self.gaitsequence != 0:
             gait_sequence = model.mdl.sequences[self.gaitsequence]
             gait_anim = gait_sequence.blends[0]
-            pos2, q2 = self.studio_calc_rotations(time, model, gait_sequence, gait_anim, self.gaitframe)
+            pos2, q2 = self.studio_calc_rotations(cl, model, gait_sequence, gait_anim, self.gaitframe)
 
             for i, bone in enumerate(model.mdl.bones):
                 for leg_bone in LEGS_BONES:
@@ -1306,6 +1323,85 @@ class Entity:
                 bone_transform[bone_idx] = bone_transform[bone.parent] @ bone_matrix
 
         return bone_transform
+
+class ViewmodelEntity(Entity):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, mod: Mod):
+        self.blender_scale = scale
+        self.collection = collection
+        self.mod = mod
+
+        self.prev_viewmodel: Optional[CachedModel] = None
+        self.loaded_viewmodels: dict[CachedModel, StudioModel] = {}
+
+        # REVISIT: wish we could just get unlinked thing back from creation functions
+        self.object: bpy.types.Object = bpy.data.objects.new("viewent", None)
+        collection.objects.link(self.object)
+
+        obj_action = ActionContext(self.object)
+
+        # see camera for why Any
+        self.obj_fcurves: dict[str, Any] = {}
+
+        self.obj_fcurves["location"] = obj_action.fcurves("location", 3)
+        self.obj_fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
+
+        self.object["draw"] = False
+        self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
+        # hide by default
+        self.obj_fcurves["draw"].insert(1, False)
+
+        # we don't need to see the empty!!!!!!!! haha!
+        self.object.hide_viewport = True
+
+        self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
+        self.obj_fcurves["r_blend"] = obj_action.fcurve('["r_blend"]')
+        self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
+
+        # stuff we don't need to get from the engine because we're a viewmodel
+        self.gaitsequence = 0
+        # STUFF THAT WE'RE SUPPOSED TO GET FROM THE ENGINE BUT DON'T :-)
+        self.controller = [0, 0, 0, 0]
+        self.prevcontroller = [0, 0, 0, 0]
+        self.mouthopen = 0
+        self.blending = [0, 0]
+        self.prevblending = [0, 0]
+        self.prevframe = 0
+        self.update(br, blender_frame)
+
+    # R_DrawViewModel / R_StudioDrawModel with modifications for model changing with viewmodel
+    def studio_draw_model(self, blender_frame: int, cl: Cl, mod: Mod):
+        self.frame = 0.0
+        model = cl.get_model_by_index(self.model_index)
+        # GSR recorder should never do this
+        if model is None:
+            raise Exception("Viewmodel model could not be found by index")
+
+        if model in self.loaded_viewmodels:
+            studio_model = self.loaded_viewmodels[model]
+        else:
+            model_obj = model.create_object(self.mod, self.blender_scale, self.collection, None)
+            model_obj.parent = self.object
+
+            studio_model = self.loaded_viewmodels[model] = StudioModel(model_obj, self.object)
+
+        if model != self.prev_viewmodel:
+            if self.prev_viewmodel is not None:
+                self.loaded_viewmodels[self.prev_viewmodel].active_fcurve.insert(blender_frame, False)
+            studio_model.active_fcurve.insert(blender_frame, True)
+            self.prev_viewmodel = model
+
+        bone_transform = self.studio_set_up_bones(cl, model)
+
+        self.studio_render_model(blender_frame, model, studio_model, bone_transform)
+
+        if self.origin != self.prev_origin:
+            location = self.origin * self.blender_scale
+            self.obj_fcurves["location"].insert(blender_frame, location)
+
+        if self.angles != self.prev_angles:
+            rotation_euler = goldsrc_to_blender_angles(self.angles)
+            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
+
 
 class BeamType(IntEnum):
     TE_BEAMPOINTS = 0
@@ -1349,12 +1445,16 @@ class Beam:
     prev_flags: Optional[FBEAM] = None
     prev_frame: Optional[float] = None
 
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, mod: Mod):
+    # R_BeamSetup / specific R_BeamXXXX function
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, cl: Cl):
         self.blender_scale = scale
 
         self.type = BeamType(br.i32())
         model_index = br.u32()
-        self.model = mod[model_index]
+        model = cl.get_model_by_index(model_index)
+        if model is None:
+            raise Exception("Couldn't find beam model!")
+        self.model = model
 
         # more should be shared here i think...
         self.framecount = len(self.model.spr.frames)
@@ -1579,7 +1679,7 @@ class Beam:
 
             source = current.org * self.blender_scale
             raw_delta = next_p.org - current.org
-            delta = raw_delta * self.blender_scale # pyright: ignore[reportArgumentType]
+            delta = raw_delta * self.blender_scale
             brightness_start = max(0.0, (current.die - time) / self.amplitude)
             brightness_end = 0.0 if next_p is active[-1] else max(0.0, (next_p.die - time) / self.amplitude)
 
@@ -1649,32 +1749,33 @@ class Beam:
 
         return obj, fcurves
 
-def cl_fx_blend(renderamt: int, renderfx: int, entity_index: int, time: float) -> float:
+# CL_FxBlend
+def cl_fx_blend(renderamt: int, renderfx: int, entity_index: int, time: float) -> int:
     offset = entity_index * 363.0
 
     match renderfx:
         case RenderFx.PulseSlow:
-            blend = renderamt + 0x10 * math.sin(time * 2 + offset)
+            blend = int(renderamt + 0x10 * math.sin(time * 2 + offset))
         case RenderFx.PulseFast:
-            blend = renderamt + 0x10 * math.sin(time * 8 + offset)
+            blend = int(renderamt + 0x10 * math.sin(time * 8 + offset))
         case RenderFx.PulseSlowWide:
-            blend = renderamt + 0x40 * math.sin(time * 2 + offset)
+            blend = int(renderamt + 0x40 * math.sin(time * 2 + offset))
         case RenderFx.PulseFastWide:
-            blend = renderamt + 0x40 * math.sin(time * 8 + offset)
+            blend = int(renderamt + 0x40 * math.sin(time * 8 + offset))
         case RenderFx.StrobeSlow:
-            blend = 20 * math.sin(time * 4 + offset)
+            blend = int(20 * math.sin(time * 4 + offset))
             blend = 0 if blend < 0 else renderamt
         case RenderFx.StrobeFast:
-            blend = 20 * math.sin(time * 16 + offset)
+            blend = int(20 * math.sin(time * 16 + offset))
             blend = 0 if blend < 0 else renderamt
         case RenderFx.StrobeFaster:
-            blend = 20 * math.sin(time * 36 + offset)
+            blend = int(20 * math.sin(time * 36 + offset))
             blend = 0 if blend < 0 else renderamt
         case RenderFx.FlickerSlow:
-            blend = 20 * (math.sin(time * 2) + math.sin(time * 17 + offset))
+            blend = int(20 * (math.sin(time * 2) + math.sin(time * 17 + offset)))
             blend = 0 if blend < 0 else renderamt
         case RenderFx.FlickerFast:
-            blend = 20 * (math.sin(time * 16) + math.sin(time * 23 + offset))
+            blend = int(20 * (math.sin(time * 16) + math.sin(time * 23 + offset)))
             blend = 0 if blend < 0 else renderamt
         case RenderFx.Hologram:
             # TODO: distance fade needs camera distance
@@ -1700,6 +1801,31 @@ class Decal:
 
 SKYNAME_SUFFIX = ["rt", "bk", "lf", "ft", "up", "dn"]
 MAX_SKY_TGA_RESOLUTION = (256 * 256) * 4
+
+class Cl:
+    time: float = 0
+    oldtime: float = 0
+
+    def __init__(self, mod: Mod):
+        self.mod = mod
+        self.players = [
+            PlayerInfo("", 0, 0)
+            for _ in range(32)
+        ]
+
+
+    # CL_GetModelByIndex
+    def get_model_by_index(self, index: int) -> Optional[CachedModel]:
+        try:
+            model = self.mod[index]
+        except IndexError:
+            return None
+
+        if not model.loaded:
+            self.mod.load_model(model, False)
+
+        return model
+
 
 class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportIncompatibleMethodOverride]
     bl_idname = "gsr.import_file"
@@ -1852,6 +1978,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
         view_layer = bpy.context.view_layer
         assert view_layer is not None
+        view_layer.use_pass_cryptomatte_asset = True
         view_layer["animation_time"] = 0
 
         prev_animation_time = 0
@@ -1873,14 +2000,12 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
 
         self.decal_wad = Wad(wad_file, "decals.wad")
 
-        self.players = [
-            PlayerInfo("", 0, 0)
-            for _ in range(32)
-        ]
-
         # because python classes share default :)))))))))))
         self.mod: Mod = Mod(self.fs)
+        self.cl = Cl(self.mod)
+
         self.camera: Optional[Camera] = None
+        self.viewent: Optional[ViewmodelEntity] = None
         self.entities: dict[int, Entity] = {}
         self.beams: dict[int, Beam] = {}
         self.decals: dict[int, Decal] = {}
@@ -1889,7 +2014,6 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         self.prev_skyname: Optional[str] = None
 
         self.frame = 1
-        self.time = 0
 
         view_layer["draw_no_depth"] = 0
 
@@ -1902,10 +2026,6 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         no_depth_collection = bpy.data.collections.new("gsr_no_depth_objects")
         collection_children.link(no_depth_collection)
         view_layer_children[no_depth_collection.name].exclude = True
-
-        viewmodel_collection = bpy.data.collections.new("gsr_viewmodel")
-        collection_children.link(viewmodel_collection)
-        view_layer_children[viewmodel_collection.name].exclude = True
 
         null_world = bpy.data.worlds.new("null_world")
         null_world.node_tree.nodes.clear()
@@ -1921,18 +2041,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                 continue
             child.exclude = True
 
-        viewmodel_view_layer = bpy.context.scene.view_layers.new("viewmodel") # type: ignore
-        viewmodel_view_layer.world_override = null_world
-        # using alpha this looks bad (isn't "anti-aliased")
-        # viewmodel_view_layer.samples = 1
-        viewmodel_view_layer.use_pass_combined = False
-        viewmodel_view_layer.use_pass_z = True
-        for child in viewmodel_view_layer.layer_collection.children:
-            if child.name == viewmodel_collection.name:
-                continue
-            child.exclude = True
-
-        gsr_nodes.create_compositing_nodes(bpy.context.view_layer, no_depth_view_layer, viewmodel_view_layer)
+        gsr_nodes.create_compositing_nodes(bpy.context.view_layer, no_depth_view_layer)
 
         filesize = os.fstat(self.br.stream.fileno()).st_size
 
@@ -1940,18 +2049,14 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         assert wm is not None
         wm.progress_begin(0, filesize)
 
+        # IEngine::Frame, Host_Frame, _Host_Frame
         while True:
-            self.prev_time = self.time
+            # CL_ReadPackets
+            self.cl.oldtime = self.cl.time
             try:
-                self.time = self.br.f64()
-                # print(f"self.time: {self.time}")
+                self.cl.time = self.br.f64()
             except Exception as e:
                 break
-
-            animation_time = int(self.time * 10.0)
-            if prev_animation_time != animation_time:
-                animation_time_fcurve.insert(self.frame, animation_time)
-                prev_animation_time = animation_time
 
             message_count = self.br.u16()
 
@@ -1961,7 +2066,7 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     case MessageType.AddModels:
                         self.parse_add_models()
                     case MessageType.NewObject:
-                        self.parse_new_object(collection, no_depth_collection, viewmodel_collection)
+                        self.parse_new_object(collection, no_depth_collection)
                     case MessageType.UpdateObject:
                         self.parse_update_object()
                     case MessageType.UpdatePlayer:
@@ -1975,36 +2080,13 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     case _:
                         raise Exception(f"unknown message type: {message_type}")
 
-            # R_DrawEntitiesOnList/ R_DrawTEntitiesOnList
-            for (i, entity) in self.entities.items():
-                if not entity.draw:
-                    continue
+            # Host_UpdateScreen, SCR_UpdateScreen, VGui_Paint, VGuiWrap_Paint, VGui_ViewportPaintBackground, V_RenderView, R_RenderView, R_RenderScene
+            animation_time = int(self.cl.time * 10.0)
+            if prev_animation_time != animation_time:
+                animation_time_fcurve.insert(self.frame, animation_time)
+                prev_animation_time = animation_time
 
-                if entity.model.type == ModelType.BRUSH:
-                    entity.draw_brush_model(self.frame)
-                elif entity.model.type == ModelType.SPRITE:
-                    if entity.rendermode == RenderMode.Normal:
-                        r_blend = 1.0
-                    else:
-                        r_blend = cl_fx_blend(entity.renderamt, entity.renderfx, i, self.time)
-                    if self.camera is None:
-                        raise Exception("camera is none blehhh")
-                    entity.draw_sprite_model(self.frame, r_blend, self.camera)
-                elif entity.model.type == ModelType.ALIAS:
-                    print("We don't know how to draw alias model!")
-                elif entity.model.type == ModelType.STUDIO:
-                    if entity.player:
-                        entity.studio_draw_player(self.frame, self.time, self.prev_time, self.players, self.mod)
-                    else:
-                        entity.studio_draw_model(self.frame, self.time, self.prev_time, self.players, self.mod)
-
-            for beam in self.beams.values():
-                if not beam.draw:
-                    continue
-
-                beam.beam_draw(self.frame, self.time, collection)
-
-            # R_AnimateLight
+            # R_SetupFrame, R_AnimateLight
             for (index, map) in self.lightstyles.items():
                 if not self.lightstyle_id_map.get(index):
                     continue
@@ -2018,7 +2100,45 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                         fcurve.insert(self.frame, value)
                         self.lightstyle_id_map[index][i] = (fcurve, value)
 
-            # R_LoadSkys
+            # R_DrawEntitiesOnList / R_DrawTEntitiesOnList
+            for (i, entity) in self.entities.items():
+                if not entity.draw:
+                    continue
+
+                if entity.model.type == ModelType.BRUSH:
+                    entity.draw_brush_model(self.frame)
+                elif entity.model.type == ModelType.SPRITE:
+                    if entity.rendermode == RenderMode.Normal:
+                        r_blend = 1.0
+                    else:
+                        r_blend = cl_fx_blend(entity.renderamt, entity.renderfx, i, self.cl.time)
+                    if self.camera is None:
+                        raise Exception("camera is none blehhh")
+                    entity.draw_sprite_model(self.frame, r_blend, self.camera)
+                elif entity.model.type == ModelType.ALIAS:
+                    print("We don't know how to draw alias model!")
+                elif entity.model.type == ModelType.STUDIO:
+                    if entity.player:
+                        entity.studio_draw_player(self.frame, self.cl, self.mod)
+                    else:
+                        entity.studio_draw_model(self.frame, self.cl, self.mod)
+
+            # R_DrawParticles
+            # R_BeamDrawList
+            for beam in self.beams.values():
+                if not beam.draw:
+                    continue
+
+                beam.beam_draw(self.frame, self.cl.time, collection)
+
+            # R_DrawViewModel
+            if self.viewent is not None and self.viewent.draw:
+                self.viewent.framerate = 1.0
+                self.viewent.studio_draw_model(self.frame, self.cl, self.mod)
+
+            # engine does this in CL_ReadPackets, CL_ParseServerMessage, CL_ParseResourceList, ..., CL_RegisterResources
+            # but we do it down here because we only support a single map (and cls.state) per recording at this point
+            # R_NewMap, R_LoadSkys
             if self.skyname != self.prev_skyname:
                 images: list[Optional[bpy.types.Image]] = []
                 skyname = self.skyname
@@ -2077,16 +2197,12 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
         animation_time_fcurve.flush()
 
         if self.camera is not None:
-            # holy crap! python sucks! static analyzer is so stupid!
             for fcurve in self.camera.fcurves.values(): # type: ignore
                 fcurve.flush()
 
         for entity in self.entities.values():
-            for name, fcurve in entity.obj_fcurves.items():
+            for fcurve in entity.obj_fcurves.values():
                 fcurve: FCurveBuffer | FCurveBufferGroup
-                # if name == "location":
-                #     print(f"{name} is being flushed on {entity.object.name}")
-                #     print(fcurve._buffers[0]._values)
                 fcurve.flush()
 
             if entity.model.type == ModelType.STUDIO:
@@ -2107,24 +2223,38 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     for fcurve in particle.fcurves.values():
                         fcurve.flush()
 
+        if self.viewent is not None:
+            for fcurve in self.viewent.obj_fcurves.values(): # type: ignore
+                fcurve.flush()
 
-        assert bpy.context.scene is not None
-        bpy.context.scene.frame_current = 1
-        bpy.context.scene.frame_end = self.frame - 1
+            for studio_model in self.viewent.loaded_viewmodels.values(): # type: ignore
+                studio_model.flush_fcurves()
+
+        scene.frame_current = 1
+        scene.frame_end = self.frame - 1
 
         print(f"finished importing gsr!")
         wm.progress_end()
 
         return {'FINISHED'}
 
+    # CL_ParseResourceList, CL_startResourceDownloading, CL_BatchResoruceRequest, CL_PrecacheResources / CL_RegisterResources
+    # with fs_lazy_precache 1 (in spirit) - we don't have to check for duplicates and stuff because the engine has already done that
     def parse_add_models(self):
         model_count = self.br.u16()
         for _ in range(model_count):
             name_length = self.br.u8()
-            name = self.br.fixed_string(name_length, "utf-8")
-            self.mod.append(CachedModel(self.fs, name))
+            name = self.br.fixed_string(name_length)
+            # Mod_FindName (inserting, but not loading)
+            model = CachedModel(self.fs, name)
+            self.mod.append(model)
+            # HACK: we don't know resource types, so this is kind of just a guess
+            # this only works beacuse Mod_LoadBrushModel calls Mod_FindName for submodel
+            # CL_PrecacheBSPModels
+            if name.startswith("*"):
+                model.loaded = True
 
-    def parse_new_object(self, collection, no_depth_collection, viewmodel_collection):
+    def parse_new_object(self, collection, no_depth_collection):
         object_type = self.br.u8()
 
         match object_type:
@@ -2135,10 +2265,12 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     self.camera = Camera(self.br, self.frame, self.scale)
             case ObjectType.Entity:
                 id = self.br.u32()
-                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, viewmodel_collection, self.mod)
+                self.entities[id] = Entity(self.br, self.frame, self.scale, collection, no_depth_collection, self.mod)
             case ObjectType.Beam:
                 id = self.br.u32()
-                self.beams[id] = Beam(self.br, self.frame, self.scale, collection, self.mod)
+                self.beams[id] = Beam(self.br, self.frame, self.scale, collection, self.cl)
+            case ObjectType.ViewEnt:
+                self.viewent = ViewmodelEntity(self.br, self.frame, self.scale, collection, self.mod)
             case _:
                 print(f"unexpected object type! {object_type}")
 
@@ -2165,12 +2297,17 @@ class GsrImporter(bpy.types.Operator, ImportHelper): # pyright: ignore[reportInc
                     print(f"why don't we have this beam id!!!!!! {id}")
                     return
                 beam.update(self.br, self.frame)
+            case ObjectType.ViewEnt:
+                if self.viewent is None:
+                    print("Updating viewent but we have no viewent!!!")
+                else:
+                    self.viewent.update(self.br, self.frame)
             case _:
                 print(f"unexpected object type! {object_type}")
 
     def parse_update_player(self):
         player_index = self.br.u8()
-        self.players[player_index].update(self.br)
+        self.cl.players[player_index].update(self.br)
 
     def parse_update_decals(self, collection):
         decal_count = self.br.u16()
