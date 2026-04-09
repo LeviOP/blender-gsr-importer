@@ -42,8 +42,13 @@ class FCurveBufferGroup:
 
     # blender types don't report that vector or quaternion are iterable, but they are.
     # better to do the type "hacking" here than at every call site
-    def insert(self, frame: int, values: Iterable[float] | Vector | Quaternion) -> None:
-        for buf, value in zip(self._buffers, values): # type: ignore
+    def insert(self, frame: int, values: float | Iterable[float] | Vector | Quaternion) -> None:
+        if isinstance(values, (int, float)):
+            iterable = (values,) * len(self._buffers)
+        else:
+            iterable = values
+
+        for buf, value in zip(self._buffers, iterable): # type: ignore
             buf.insert(frame, value)
 
     def flush(self) -> None:

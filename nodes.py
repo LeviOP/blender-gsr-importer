@@ -18,18 +18,22 @@ def sprite_color_1_node_group():
     result_socket.default_input = 'VALUE'
     result_socket.structure_type = 'AUTO'
 
+    # Socket Blend
+    blend_socket = sprite_color_1.interface.new_socket(name="Blend", in_out='INPUT', socket_type='NodeSocketFloat')
+    blend_socket.default_value = 0.0
+    blend_socket.min_value = -3.4028234663852886e+38
+    blend_socket.max_value = 3.4028234663852886e+38
+    blend_socket.subtype = 'NONE'
+    blend_socket.attribute_domain = 'POINT'
+    blend_socket.default_input = 'VALUE'
+    blend_socket.structure_type = 'AUTO'
+
     # Initialize sprite_color_1 nodes
 
     # Node Group Output
     group_output = sprite_color_1.nodes.new("NodeGroupOutput")
     group_output.name = "Group Output"
     group_output.is_active_output = True
-
-    # Node Attribute
-    attribute = sprite_color_1.nodes.new("ShaderNodeAttribute")
-    attribute.name = "Attribute"
-    attribute.attribute_name = "r_blend"
-    attribute.attribute_type = 'OBJECT'
 
     # Node Attribute.003
     attribute_003 = sprite_color_1.nodes.new("ShaderNodeAttribute")
@@ -84,9 +88,20 @@ def sprite_color_1_node_group():
     math_007.operation = 'MAXIMUM'
     math_007.use_clamp = False
 
+    # Node Group Input
+    group_input = sprite_color_1.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+
+    # Node Math.001
+    math_001 = sprite_color_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'DIVIDE'
+    math_001.use_clamp = False
+    # Value_001
+    math_001.inputs[1].default_value = 255.0
+
     # Set locations
     sprite_color_1.nodes["Group Output"].location = (480.0, 120.0)
-    sprite_color_1.nodes["Attribute"].location = (160.0, -120.0)
     sprite_color_1.nodes["Attribute.003"].location = (0.0, -60.0)
     sprite_color_1.nodes["Gamma"].location = (160.0, -40.0)
     sprite_color_1.nodes["Mix"].location = (320.0, 120.0)
@@ -94,13 +109,12 @@ def sprite_color_1_node_group():
     sprite_color_1.nodes["Math.005"].location = (-160.0, 120.0)
     sprite_color_1.nodes["Math.006"].location = (0.0, 120.0)
     sprite_color_1.nodes["Math.007"].location = (160.0, 120.0)
+    sprite_color_1.nodes["Group Input"].location = (0.0, -240.0)
+    sprite_color_1.nodes["Math.001"].location = (160.0, -120.0)
 
     # Set dimensions
     sprite_color_1.nodes["Group Output"].width  = 140.0
     sprite_color_1.nodes["Group Output"].height = 100.0
-
-    sprite_color_1.nodes["Attribute"].width  = 140.0
-    sprite_color_1.nodes["Attribute"].height = 100.0
 
     sprite_color_1.nodes["Attribute.003"].width  = 140.0
     sprite_color_1.nodes["Attribute.003"].height = 100.0
@@ -123,6 +137,12 @@ def sprite_color_1_node_group():
     sprite_color_1.nodes["Math.007"].width  = 140.0
     sprite_color_1.nodes["Math.007"].height = 100.0
 
+    sprite_color_1.nodes["Group Input"].width  = 140.0
+    sprite_color_1.nodes["Group Input"].height = 100.0
+
+    sprite_color_1.nodes["Math.001"].width  = 140.0
+    sprite_color_1.nodes["Math.001"].height = 100.0
+
 
     # Initialize sprite_color_1 links
 
@@ -130,11 +150,6 @@ def sprite_color_1_node_group():
     sprite_color_1.links.new(
         sprite_color_1.nodes["Math.006"].outputs[0],
         sprite_color_1.nodes["Math.007"].inputs[0]
-    )
-    # attribute.Color -> mix.B
-    sprite_color_1.links.new(
-        sprite_color_1.nodes["Attribute"].outputs[0],
-        sprite_color_1.nodes["Mix"].inputs[7]
     )
     # math_005.Value -> math_007.Value
     sprite_color_1.links.new(
@@ -151,16 +166,6 @@ def sprite_color_1_node_group():
         sprite_color_1.nodes["Attribute.004"].outputs[2],
         sprite_color_1.nodes["Math.005"].inputs[0]
     )
-    # math_007.Value -> mix.Factor
-    sprite_color_1.links.new(
-        sprite_color_1.nodes["Math.007"].outputs[0],
-        sprite_color_1.nodes["Mix"].inputs[0]
-    )
-    # gamma.Color -> mix.A
-    sprite_color_1.links.new(
-        sprite_color_1.nodes["Gamma"].outputs[0],
-        sprite_color_1.nodes["Mix"].inputs[6]
-    )
     # attribute_004.Factor -> math_006.Value
     sprite_color_1.links.new(
         sprite_color_1.nodes["Attribute.004"].outputs[2],
@@ -170,6 +175,26 @@ def sprite_color_1_node_group():
     sprite_color_1.links.new(
         sprite_color_1.nodes["Mix"].outputs[2],
         sprite_color_1.nodes["Group Output"].inputs[0]
+    )
+    # gamma.Color -> mix.A
+    sprite_color_1.links.new(
+        sprite_color_1.nodes["Gamma"].outputs[0],
+        sprite_color_1.nodes["Mix"].inputs[6]
+    )
+    # math_001.Value -> mix.B
+    sprite_color_1.links.new(
+        sprite_color_1.nodes["Math.001"].outputs[0],
+        sprite_color_1.nodes["Mix"].inputs[7]
+    )
+    # math_007.Value -> mix.Factor
+    sprite_color_1.links.new(
+        sprite_color_1.nodes["Math.007"].outputs[0],
+        sprite_color_1.nodes["Mix"].inputs[0]
+    )
+    # group_input.Blend -> math_001.Value
+    sprite_color_1.links.new(
+        sprite_color_1.nodes["Group Input"].outputs[0],
+        sprite_color_1.nodes["Math.001"].inputs[0]
     )
 
     return sprite_color_1
@@ -1922,6 +1947,7 @@ def beam_segment_1_node_group():
 
     return beam_segment_1
 
+# R_TextureAnimation
 def animated_texture_1_node_group():
     """Initialize Animated Texture node group"""
     animated_texture_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "Animated Texture")
@@ -1975,7 +2001,7 @@ def animated_texture_1_node_group():
     # Node Attribute.001
     attribute_001 = animated_texture_1.nodes.new("ShaderNodeAttribute")
     attribute_001.name = "Attribute.001"
-    attribute_001.attribute_name = "animation_time"
+    attribute_001.attribute_name = "time"
     attribute_001.attribute_type = 'VIEW_LAYER'
 
     # Node Math
@@ -1983,11 +2009,6 @@ def animated_texture_1_node_group():
     math.name = "Math"
     math.operation = 'MODULO'
     math.use_clamp = False
-
-    # Node Texture Coordinate
-    texture_coordinate = animated_texture_1.nodes.new("ShaderNodeTexCoord")
-    texture_coordinate.name = "Texture Coordinate"
-    texture_coordinate.from_instancer = False
 
     # Node Separate XYZ.001
     separate_xyz_001 = animated_texture_1.nodes.new("ShaderNodeSeparateXYZ")
@@ -2060,23 +2081,50 @@ def animated_texture_1_node_group():
     math_007.operation = 'ADD'
     math_007.use_clamp = False
 
+    # Node Math.008
+    math_008 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_008.name = "Math.008"
+    math_008.operation = 'MULTIPLY'
+    math_008.use_clamp = False
+    # Value_001
+    math_008.inputs[1].default_value = 10.0
+
+    # Node Math.009
+    math_009 = animated_texture_1.nodes.new("ShaderNodeMath")
+    math_009.name = "Math.009"
+    math_009.operation = 'TRUNC'
+    math_009.use_clamp = False
+
+    # Node Texture Coordinate.001
+    texture_coordinate_001 = animated_texture_1.nodes.new("ShaderNodeTexCoord")
+    texture_coordinate_001.name = "Texture Coordinate.001"
+    texture_coordinate_001.from_instancer = False
+    texture_coordinate_001.outputs[0].hide = True
+    texture_coordinate_001.outputs[1].hide = True
+    texture_coordinate_001.outputs[3].hide = True
+    texture_coordinate_001.outputs[4].hide = True
+    texture_coordinate_001.outputs[5].hide = True
+    texture_coordinate_001.outputs[6].hide = True
+
     # Set locations
-    animated_texture_1.nodes["Group Output"].location = (720.0, -180.0)
+    animated_texture_1.nodes["Group Output"].location = (720.0, -120.0)
     animated_texture_1.nodes["Group Input"].location = (-560.0, 40.0)
-    animated_texture_1.nodes["Attribute.001"].location = (-560.0, -60.0)
-    animated_texture_1.nodes["Math"].location = (-240.0, -120.0)
-    animated_texture_1.nodes["Texture Coordinate"].location = (-240.0, -280.0)
-    animated_texture_1.nodes["Separate XYZ.001"].location = (-80.0, -200.0)
-    animated_texture_1.nodes["Combine XYZ"].location = (560.0, -180.0)
-    animated_texture_1.nodes["Math.002"].location = (80.0, -100.0)
-    animated_texture_1.nodes["Math.003"].location = (240.0, 60.0)
+    animated_texture_1.nodes["Attribute.001"].location = (-880.0, -120.0)
+    animated_texture_1.nodes["Math"].location = (-400.0, -120.0)
+    animated_texture_1.nodes["Separate XYZ.001"].location = (-80.0, -140.0)
+    animated_texture_1.nodes["Combine XYZ"].location = (560.0, -120.0)
+    animated_texture_1.nodes["Math.002"].location = (80.0, -20.0)
+    animated_texture_1.nodes["Math.003"].location = (240.0, 120.0)
     animated_texture_1.nodes["Math.004"].location = (400.0, 60.0)
     animated_texture_1.nodes["Attribute.002"].location = (-400.0, 220.0)
     animated_texture_1.nodes["Math.001"].location = (-240.0, 220.0)
     animated_texture_1.nodes["Math.005"].location = (-400.0, 40.0)
     animated_texture_1.nodes["Math.006"].location = (-240.0, 40.0)
     animated_texture_1.nodes["Mix"].location = (-80.0, 40.0)
-    animated_texture_1.nodes["Math.007"].location = (240.0, -100.0)
+    animated_texture_1.nodes["Math.007"].location = (240.0, -40.0)
+    animated_texture_1.nodes["Math.008"].location = (-720.0, -120.0)
+    animated_texture_1.nodes["Math.009"].location = (-560.0, -120.0)
+    animated_texture_1.nodes["Texture Coordinate.001"].location = (-240.0, -160.0)
 
     # Set dimensions
     animated_texture_1.nodes["Group Output"].width  = 140.0
@@ -2090,9 +2138,6 @@ def animated_texture_1_node_group():
 
     animated_texture_1.nodes["Math"].width  = 140.0
     animated_texture_1.nodes["Math"].height = 100.0
-
-    animated_texture_1.nodes["Texture Coordinate"].width  = 140.0
-    animated_texture_1.nodes["Texture Coordinate"].height = 100.0
 
     animated_texture_1.nodes["Separate XYZ.001"].width  = 140.0
     animated_texture_1.nodes["Separate XYZ.001"].height = 100.0
@@ -2127,6 +2172,15 @@ def animated_texture_1_node_group():
     animated_texture_1.nodes["Math.007"].width  = 140.0
     animated_texture_1.nodes["Math.007"].height = 100.0
 
+    animated_texture_1.nodes["Math.008"].width  = 140.0
+    animated_texture_1.nodes["Math.008"].height = 100.0
+
+    animated_texture_1.nodes["Math.009"].width  = 140.0
+    animated_texture_1.nodes["Math.009"].height = 100.0
+
+    animated_texture_1.nodes["Texture Coordinate.001"].width  = 140.0
+    animated_texture_1.nodes["Texture Coordinate.001"].height = 100.0
+
 
     # Initialize animated_texture_1 links
 
@@ -2134,11 +2188,6 @@ def animated_texture_1_node_group():
     animated_texture_1.links.new(
         animated_texture_1.nodes["Mix"].outputs[0],
         animated_texture_1.nodes["Math.003"].inputs[0]
-    )
-    # attribute_001.Factor -> math_005.Value
-    animated_texture_1.links.new(
-        animated_texture_1.nodes["Attribute.001"].outputs[2],
-        animated_texture_1.nodes["Math.005"].inputs[0]
     )
     # math_001.Value -> mix.Factor
     animated_texture_1.links.new(
@@ -2160,11 +2209,6 @@ def animated_texture_1_node_group():
         animated_texture_1.nodes["Separate XYZ.001"].outputs[1],
         animated_texture_1.nodes["Combine XYZ"].inputs[1]
     )
-    # attribute_001.Factor -> math.Value
-    animated_texture_1.links.new(
-        animated_texture_1.nodes["Attribute.001"].outputs[2],
-        animated_texture_1.nodes["Math"].inputs[0]
-    )
     # math_005.Value -> math_006.Value
     animated_texture_1.links.new(
         animated_texture_1.nodes["Math.005"].outputs[0],
@@ -2184,11 +2228,6 @@ def animated_texture_1_node_group():
     animated_texture_1.links.new(
         animated_texture_1.nodes["Separate XYZ.001"].outputs[0],
         animated_texture_1.nodes["Math.002"].inputs[0]
-    )
-    # texture_coordinate.UV -> separate_xyz_001.Vector
-    animated_texture_1.links.new(
-        animated_texture_1.nodes["Texture Coordinate"].outputs[2],
-        animated_texture_1.nodes["Separate XYZ.001"].inputs[0]
     )
     # combine_xyz.Vector -> group_output.Vector
     animated_texture_1.links.new(
@@ -2235,8 +2274,2168 @@ def animated_texture_1_node_group():
         animated_texture_1.nodes["Math"].outputs[0],
         animated_texture_1.nodes["Mix"].inputs[3]
     )
+    # attribute_001.Factor -> math_008.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Attribute.001"].outputs[2],
+        animated_texture_1.nodes["Math.008"].inputs[0]
+    )
+    # math_008.Value -> math_009.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.008"].outputs[0],
+        animated_texture_1.nodes["Math.009"].inputs[0]
+    )
+    # math_009.Value -> math_005.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.009"].outputs[0],
+        animated_texture_1.nodes["Math.005"].inputs[0]
+    )
+    # math_009.Value -> math.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Math.009"].outputs[0],
+        animated_texture_1.nodes["Math"].inputs[0]
+    )
+    # texture_coordinate_001.UV -> separate_xyz_001.Vector
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Texture Coordinate.001"].outputs[2],
+        animated_texture_1.nodes["Separate XYZ.001"].inputs[0]
+    )
 
     return animated_texture_1
+
+def glow_sprite_1_node_group():
+    """Initialize Glow Sprite node group"""
+    glow_sprite_1 = bpy.data.node_groups.new(type='GeometryNodeTree', name="Glow Sprite")
+
+    glow_sprite_1.color_tag = 'NONE'
+    glow_sprite_1.description = ""
+    glow_sprite_1.default_group_node_width = 140
+    glow_sprite_1.is_modifier = True
+    glow_sprite_1.show_modifier_manage_panel = True
+
+    # glow_sprite_1 interface
+
+    # Socket Geometry
+    geometry_socket = glow_sprite_1.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    geometry_socket.attribute_domain = 'POINT'
+    geometry_socket.default_input = 'VALUE'
+    geometry_socket.structure_type = 'AUTO'
+
+    # Socket Geometry
+    geometry_socket_1 = glow_sprite_1.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    geometry_socket_1.attribute_domain = 'POINT'
+    geometry_socket_1.default_input = 'VALUE'
+    geometry_socket_1.structure_type = 'AUTO'
+
+    # Socket Image
+    image_socket = glow_sprite_1.interface.new_socket(name="Image", in_out='INPUT', socket_type='NodeSocketImage')
+    image_socket.attribute_domain = 'POINT'
+    image_socket.default_input = 'VALUE'
+    image_socket.structure_type = 'AUTO'
+
+    # Socket Frame
+    frame_socket = glow_sprite_1.interface.new_socket(name="Frame", in_out='INPUT', socket_type='NodeSocketInt')
+    frame_socket.default_value = 0
+    frame_socket.min_value = -2147483648
+    frame_socket.max_value = 2147483647
+    frame_socket.subtype = 'NONE'
+    frame_socket.attribute_domain = 'POINT'
+    frame_socket.default_input = 'VALUE'
+    frame_socket.structure_type = 'AUTO'
+
+    # Initialize glow_sprite_1 nodes
+
+    # Node Group Input
+    group_input = glow_sprite_1.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+    group_input.outputs[1].hide = True
+    group_input.outputs[2].hide = True
+    group_input.outputs[3].hide = True
+
+    # Node Group Output
+    group_output = glow_sprite_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+    group_output.inputs[1].hide = True
+
+    # Node Raycast
+    raycast = glow_sprite_1.nodes.new("GeometryNodeRaycast")
+    raycast.name = "Raycast"
+    raycast.data_type = 'FLOAT'
+    # Attribute
+    raycast.inputs[1].default_value = 0.0
+    # Interpolation
+    raycast.inputs[2].default_value = 'Interpolated'
+
+    # Node Active Camera
+    active_camera = glow_sprite_1.nodes.new("GeometryNodeInputActiveCamera")
+    active_camera.name = "Active Camera"
+
+    # Node Object Info
+    object_info = glow_sprite_1.nodes.new("GeometryNodeObjectInfo")
+    object_info.name = "Object Info"
+    object_info.transform_space = 'ORIGINAL'
+    object_info.inputs[1].hide = True
+    object_info.outputs[0].hide = True
+    object_info.outputs[2].hide = True
+    object_info.outputs[3].hide = True
+    object_info.outputs[4].hide = True
+    # As Instance
+    object_info.inputs[1].default_value = False
+
+    # Node Self Object
+    self_object = glow_sprite_1.nodes.new("GeometryNodeSelfObject")
+    self_object.name = "Self Object"
+
+    # Node Object Info.001
+    object_info_001 = glow_sprite_1.nodes.new("GeometryNodeObjectInfo")
+    object_info_001.name = "Object Info.001"
+    object_info_001.transform_space = 'ORIGINAL'
+    object_info_001.inputs[1].hide = True
+    object_info_001.outputs[0].hide = True
+    object_info_001.outputs[2].hide = True
+    object_info_001.outputs[3].hide = True
+    object_info_001.outputs[4].hide = True
+    # As Instance
+    object_info_001.inputs[1].default_value = False
+
+    # Node Vector Math
+    vector_math = glow_sprite_1.nodes.new("ShaderNodeVectorMath")
+    vector_math.name = "Vector Math"
+    vector_math.operation = 'SUBTRACT'
+
+    # Node Vector Math.001
+    vector_math_001 = glow_sprite_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_001.name = "Vector Math.001"
+    vector_math_001.operation = 'NORMALIZE'
+
+    # Node Vector Math.002
+    vector_math_002 = glow_sprite_1.nodes.new("ShaderNodeVectorMath")
+    vector_math_002.name = "Vector Math.002"
+    vector_math_002.operation = 'LENGTH'
+
+    # Node Store Named Attribute
+    store_named_attribute = glow_sprite_1.nodes.new("GeometryNodeStoreNamedAttribute")
+    store_named_attribute.name = "Store Named Attribute"
+    store_named_attribute.data_type = 'BOOLEAN'
+    store_named_attribute.domain = 'POINT'
+    # Selection
+    store_named_attribute.inputs[1].default_value = True
+    # Name
+    store_named_attribute.inputs[2].default_value = "visible"
+
+    # Node Join Geometry
+    join_geometry = glow_sprite_1.nodes.new("GeometryNodeJoinGeometry")
+    join_geometry.name = "Join Geometry"
+
+    # Node Object Info.002
+    object_info_002 = glow_sprite_1.nodes.new("GeometryNodeObjectInfo")
+    object_info_002.name = "Object Info.002"
+    object_info_002.transform_space = 'ORIGINAL'
+    if "model_0" in bpy.data.objects:
+        object_info_002.inputs[0].default_value = bpy.data.objects["model_0"]
+    # As Instance
+    object_info_002.inputs[1].default_value = False
+
+    # Node Math.002
+    math_002 = glow_sprite_1.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'SUBTRACT'
+    math_002.use_clamp = False
+
+    # Node Math.003
+    math_003 = glow_sprite_1.nodes.new("ShaderNodeMath")
+    math_003.name = "Math.003"
+    math_003.operation = 'LESS_THAN'
+    math_003.use_clamp = False
+    # Value_001
+    math_003.inputs[1].default_value = 0.07999999821186066
+
+    # Node Join Geometry.001
+    join_geometry_001 = glow_sprite_1.nodes.new("GeometryNodeJoinGeometry")
+    join_geometry_001.name = "Join Geometry.001"
+
+    # Node Object Info.003
+    object_info_003 = glow_sprite_1.nodes.new("GeometryNodeObjectInfo")
+    object_info_003.name = "Object Info.003"
+    object_info_003.transform_space = 'ORIGINAL'
+    if "Point" in bpy.data.objects:
+        object_info_003.inputs[0].default_value = bpy.data.objects["Point"]
+    # As Instance
+    object_info_003.inputs[1].default_value = True
+
+    # Node Store Named Attribute.001
+    store_named_attribute_001 = glow_sprite_1.nodes.new("GeometryNodeStoreNamedAttribute")
+    store_named_attribute_001.name = "Store Named Attribute.001"
+    store_named_attribute_001.data_type = 'FLOAT_COLOR'
+    store_named_attribute_001.domain = 'INSTANCE'
+    # Selection
+    store_named_attribute_001.inputs[1].default_value = True
+    # Name
+    store_named_attribute_001.inputs[2].default_value = "light_color"
+
+    # Node Geometry to Instance
+    geometry_to_instance = glow_sprite_1.nodes.new("GeometryNodeGeometryToInstance")
+    geometry_to_instance.name = "Geometry to Instance"
+
+    # Node Image Texture
+    image_texture = glow_sprite_1.nodes.new("GeometryNodeImageTexture")
+    image_texture.name = "Image Texture"
+    image_texture.extension = 'CLIP'
+    image_texture.interpolation = 'Closest'
+    image_texture.inputs[2].hide = True
+    image_texture.outputs[1].hide = True
+    # Frame
+    image_texture.inputs[2].default_value = 0
+
+    # Node Combine XYZ
+    combine_xyz = glow_sprite_1.nodes.new("ShaderNodeCombineXYZ")
+    combine_xyz.name = "Combine XYZ"
+    combine_xyz.inputs[1].hide = True
+    combine_xyz.inputs[2].hide = True
+    # Y
+    combine_xyz.inputs[1].default_value = 0.0
+    # Z
+    combine_xyz.inputs[2].default_value = 0.0
+
+    # Node Group Input.001
+    group_input_001 = glow_sprite_1.nodes.new("NodeGroupInput")
+    group_input_001.name = "Group Input.001"
+    group_input_001.outputs[0].hide = True
+    group_input_001.outputs[2].hide = True
+    group_input_001.outputs[3].hide = True
+
+    # Node Bounding Box
+    bounding_box = glow_sprite_1.nodes.new("GeometryNodeBoundBox")
+    bounding_box.name = "Bounding Box"
+    # Use Radius
+    bounding_box.inputs[1].default_value = True
+
+    # Node Store Named Attribute.002
+    store_named_attribute_002 = glow_sprite_1.nodes.new("GeometryNodeStoreNamedAttribute")
+    store_named_attribute_002.name = "Store Named Attribute.002"
+    store_named_attribute_002.data_type = 'FLOAT'
+    store_named_attribute_002.domain = 'INSTANCE'
+    # Selection
+    store_named_attribute_002.inputs[1].default_value = True
+    # Name
+    store_named_attribute_002.inputs[2].default_value = "size"
+
+    # Node Separate XYZ
+    separate_xyz = glow_sprite_1.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz.name = "Separate XYZ"
+    separate_xyz.outputs[1].hide = True
+    separate_xyz.outputs[2].hide = True
+
+    # Node Image Info
+    image_info = glow_sprite_1.nodes.new("GeometryNodeImageInfo")
+    image_info.name = "Image Info"
+    image_info.inputs[1].hide = True
+    image_info.outputs[1].hide = True
+    image_info.outputs[2].hide = True
+    image_info.outputs[3].hide = True
+    image_info.outputs[4].hide = True
+    # Frame
+    image_info.inputs[1].default_value = 0
+
+    # Node Math
+    math = glow_sprite_1.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'DIVIDE'
+    math.use_clamp = False
+
+    # Node Group Input.002
+    group_input_002 = glow_sprite_1.nodes.new("NodeGroupInput")
+    group_input_002.name = "Group Input.002"
+    group_input_002.outputs[0].hide = True
+    group_input_002.outputs[2].hide = True
+    group_input_002.outputs[3].hide = True
+
+    # Node Group Input.003
+    group_input_003 = glow_sprite_1.nodes.new("NodeGroupInput")
+    group_input_003.name = "Group Input.003"
+    group_input_003.outputs[0].hide = True
+    group_input_003.outputs[1].hide = True
+    group_input_003.outputs[3].hide = True
+
+    # Set locations
+    glow_sprite_1.nodes["Group Input"].location = (-340.0, 140.0)
+    glow_sprite_1.nodes["Group Output"].location = (940.0, 140.0)
+    glow_sprite_1.nodes["Raycast"].location = (-20.0, 80.0)
+    glow_sprite_1.nodes["Active Camera"].location = (-660.0, -140.0)
+    glow_sprite_1.nodes["Object Info"].location = (-500.0, -100.0)
+    glow_sprite_1.nodes["Self Object"].location = (-660.0, -260.0)
+    glow_sprite_1.nodes["Object Info.001"].location = (-500.0, -220.0)
+    glow_sprite_1.nodes["Vector Math"].location = (-340.0, -160.0)
+    glow_sprite_1.nodes["Vector Math.001"].location = (-180.0, -40.0)
+    glow_sprite_1.nodes["Vector Math.002"].location = (-180.0, -180.0)
+    glow_sprite_1.nodes["Store Named Attribute"].location = (460.0, 140.0)
+    glow_sprite_1.nodes["Join Geometry"].location = (-180.0, 80.0)
+    glow_sprite_1.nodes["Object Info.002"].location = (-340.0, 80.0)
+    glow_sprite_1.nodes["Math.002"].location = (140.0, 80.0)
+    glow_sprite_1.nodes["Math.003"].location = (300.0, 80.0)
+    glow_sprite_1.nodes["Join Geometry.001"].location = (300.0, 140.0)
+    glow_sprite_1.nodes["Object Info.003"].location = (-20.0, 340.0)
+    glow_sprite_1.nodes["Store Named Attribute.001"].location = (620.0, 140.0)
+    glow_sprite_1.nodes["Geometry to Instance"].location = (140.0, 200.0)
+    glow_sprite_1.nodes["Image Texture"].location = (460.0, -40.0)
+    glow_sprite_1.nodes["Combine XYZ"].location = (300.0, -140.0)
+    glow_sprite_1.nodes["Group Input.001"].location = (-180.0, -300.0)
+    glow_sprite_1.nodes["Bounding Box"].location = (460.0, 300.0)
+    glow_sprite_1.nodes["Store Named Attribute.002"].location = (780.0, 140.0)
+    glow_sprite_1.nodes["Separate XYZ"].location = (620.0, 240.0)
+    glow_sprite_1.nodes["Image Info"].location = (-20.0, -300.0)
+    glow_sprite_1.nodes["Math"].location = (140.0, -140.0)
+    glow_sprite_1.nodes["Group Input.002"].location = (300.0, -80.0)
+    glow_sprite_1.nodes["Group Input.003"].location = (-20.0, -240.0)
+
+    # Set dimensions
+    glow_sprite_1.nodes["Group Input"].width  = 140.0
+    glow_sprite_1.nodes["Group Input"].height = 100.0
+
+    glow_sprite_1.nodes["Group Output"].width  = 140.0
+    glow_sprite_1.nodes["Group Output"].height = 100.0
+
+    glow_sprite_1.nodes["Raycast"].width  = 140.0
+    glow_sprite_1.nodes["Raycast"].height = 100.0
+
+    glow_sprite_1.nodes["Active Camera"].width  = 140.0
+    glow_sprite_1.nodes["Active Camera"].height = 100.0
+
+    glow_sprite_1.nodes["Object Info"].width  = 140.0
+    glow_sprite_1.nodes["Object Info"].height = 100.0
+
+    glow_sprite_1.nodes["Self Object"].width  = 140.0
+    glow_sprite_1.nodes["Self Object"].height = 100.0
+
+    glow_sprite_1.nodes["Object Info.001"].width  = 140.0
+    glow_sprite_1.nodes["Object Info.001"].height = 100.0
+
+    glow_sprite_1.nodes["Vector Math"].width  = 140.0
+    glow_sprite_1.nodes["Vector Math"].height = 100.0
+
+    glow_sprite_1.nodes["Vector Math.001"].width  = 140.0
+    glow_sprite_1.nodes["Vector Math.001"].height = 100.0
+
+    glow_sprite_1.nodes["Vector Math.002"].width  = 140.0
+    glow_sprite_1.nodes["Vector Math.002"].height = 100.0
+
+    glow_sprite_1.nodes["Store Named Attribute"].width  = 140.0
+    glow_sprite_1.nodes["Store Named Attribute"].height = 100.0
+
+    glow_sprite_1.nodes["Join Geometry"].width  = 140.0
+    glow_sprite_1.nodes["Join Geometry"].height = 100.0
+
+    glow_sprite_1.nodes["Object Info.002"].width  = 140.0
+    glow_sprite_1.nodes["Object Info.002"].height = 100.0
+
+    glow_sprite_1.nodes["Math.002"].width  = 140.0
+    glow_sprite_1.nodes["Math.002"].height = 100.0
+
+    glow_sprite_1.nodes["Math.003"].width  = 140.0
+    glow_sprite_1.nodes["Math.003"].height = 100.0
+
+    glow_sprite_1.nodes["Join Geometry.001"].width  = 140.0
+    glow_sprite_1.nodes["Join Geometry.001"].height = 100.0
+
+    glow_sprite_1.nodes["Object Info.003"].width  = 140.0
+    glow_sprite_1.nodes["Object Info.003"].height = 100.0
+
+    glow_sprite_1.nodes["Store Named Attribute.001"].width  = 140.0
+    glow_sprite_1.nodes["Store Named Attribute.001"].height = 100.0
+
+    glow_sprite_1.nodes["Geometry to Instance"].width  = 140.0
+    glow_sprite_1.nodes["Geometry to Instance"].height = 100.0
+
+    glow_sprite_1.nodes["Image Texture"].width  = 140.0
+    glow_sprite_1.nodes["Image Texture"].height = 100.0
+
+    glow_sprite_1.nodes["Combine XYZ"].width  = 140.0
+    glow_sprite_1.nodes["Combine XYZ"].height = 100.0
+
+    glow_sprite_1.nodes["Group Input.001"].width  = 140.0
+    glow_sprite_1.nodes["Group Input.001"].height = 100.0
+
+    glow_sprite_1.nodes["Bounding Box"].width  = 140.0
+    glow_sprite_1.nodes["Bounding Box"].height = 100.0
+
+    glow_sprite_1.nodes["Store Named Attribute.002"].width  = 140.0
+    glow_sprite_1.nodes["Store Named Attribute.002"].height = 100.0
+
+    glow_sprite_1.nodes["Separate XYZ"].width  = 140.0
+    glow_sprite_1.nodes["Separate XYZ"].height = 100.0
+
+    glow_sprite_1.nodes["Image Info"].width  = 140.0
+    glow_sprite_1.nodes["Image Info"].height = 100.0
+
+    glow_sprite_1.nodes["Math"].width  = 140.0
+    glow_sprite_1.nodes["Math"].height = 100.0
+
+    glow_sprite_1.nodes["Group Input.002"].width  = 140.0
+    glow_sprite_1.nodes["Group Input.002"].height = 100.0
+
+    glow_sprite_1.nodes["Group Input.003"].width  = 140.0
+    glow_sprite_1.nodes["Group Input.003"].height = 100.0
+
+
+    # Initialize glow_sprite_1 links
+
+    # active_camera.Active Camera -> object_info.Object
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Active Camera"].outputs[0],
+        glow_sprite_1.nodes["Object Info"].inputs[0]
+    )
+    # object_info.Location -> raycast.Source Position
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Object Info"].outputs[1],
+        glow_sprite_1.nodes["Raycast"].inputs[3]
+    )
+    # self_object.Self Object -> object_info_001.Object
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Self Object"].outputs[0],
+        glow_sprite_1.nodes["Object Info.001"].inputs[0]
+    )
+    # object_info_001.Location -> vector_math.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Object Info.001"].outputs[1],
+        glow_sprite_1.nodes["Vector Math"].inputs[0]
+    )
+    # object_info.Location -> vector_math.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Object Info"].outputs[1],
+        glow_sprite_1.nodes["Vector Math"].inputs[1]
+    )
+    # vector_math.Vector -> vector_math_001.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Vector Math"].outputs[0],
+        glow_sprite_1.nodes["Vector Math.001"].inputs[0]
+    )
+    # vector_math_001.Vector -> raycast.Ray Direction
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Vector Math.001"].outputs[0],
+        glow_sprite_1.nodes["Raycast"].inputs[4]
+    )
+    # vector_math.Vector -> vector_math_002.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Vector Math"].outputs[0],
+        glow_sprite_1.nodes["Vector Math.002"].inputs[0]
+    )
+    # vector_math_002.Value -> raycast.Ray Length
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Vector Math.002"].outputs[1],
+        glow_sprite_1.nodes["Raycast"].inputs[5]
+    )
+    # object_info_002.Geometry -> join_geometry.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Object Info.002"].outputs[4],
+        glow_sprite_1.nodes["Join Geometry"].inputs[0]
+    )
+    # join_geometry.Geometry -> raycast.Target Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Join Geometry"].outputs[0],
+        glow_sprite_1.nodes["Raycast"].inputs[0]
+    )
+    # vector_math_002.Value -> math_002.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Vector Math.002"].outputs[1],
+        glow_sprite_1.nodes["Math.002"].inputs[0]
+    )
+    # raycast.Hit Distance -> math_002.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Raycast"].outputs[3],
+        glow_sprite_1.nodes["Math.002"].inputs[1]
+    )
+    # math_002.Value -> math_003.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Math.002"].outputs[0],
+        glow_sprite_1.nodes["Math.003"].inputs[0]
+    )
+    # math_003.Value -> store_named_attribute.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Math.003"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute"].inputs[3]
+    )
+    # group_input.Geometry -> join_geometry_001.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Group Input"].outputs[0],
+        glow_sprite_1.nodes["Join Geometry.001"].inputs[0]
+    )
+    # join_geometry_001.Geometry -> store_named_attribute.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Join Geometry.001"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute"].inputs[0]
+    )
+    # object_info_003.Geometry -> geometry_to_instance.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Object Info.003"].outputs[4],
+        glow_sprite_1.nodes["Geometry to Instance"].inputs[0]
+    )
+    # combine_xyz.Vector -> image_texture.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Combine XYZ"].outputs[0],
+        glow_sprite_1.nodes["Image Texture"].inputs[1]
+    )
+    # image_texture.Color -> store_named_attribute_001.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Image Texture"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute.001"].inputs[3]
+    )
+    # store_named_attribute.Geometry -> store_named_attribute_001.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Store Named Attribute"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute.001"].inputs[0]
+    )
+    # bounding_box.Max -> separate_xyz.Vector
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Bounding Box"].outputs[2],
+        glow_sprite_1.nodes["Separate XYZ"].inputs[0]
+    )
+    # separate_xyz.X -> store_named_attribute_002.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Separate XYZ"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute.002"].inputs[3]
+    )
+    # join_geometry_001.Geometry -> bounding_box.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Join Geometry.001"].outputs[0],
+        glow_sprite_1.nodes["Bounding Box"].inputs[0]
+    )
+    # store_named_attribute_002.Geometry -> group_output.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Store Named Attribute.002"].outputs[0],
+        glow_sprite_1.nodes["Group Output"].inputs[0]
+    )
+    # store_named_attribute_001.Geometry -> store_named_attribute_002.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Store Named Attribute.001"].outputs[0],
+        glow_sprite_1.nodes["Store Named Attribute.002"].inputs[0]
+    )
+    # group_input_001.Image -> image_info.Image
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Group Input.001"].outputs[1],
+        glow_sprite_1.nodes["Image Info"].inputs[0]
+    )
+    # image_info.Width -> math.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Image Info"].outputs[0],
+        glow_sprite_1.nodes["Math"].inputs[1]
+    )
+    # math.Value -> combine_xyz.X
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Math"].outputs[0],
+        glow_sprite_1.nodes["Combine XYZ"].inputs[0]
+    )
+    # group_input_002.Image -> image_texture.Image
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Group Input.002"].outputs[1],
+        glow_sprite_1.nodes["Image Texture"].inputs[0]
+    )
+    # group_input_003.Frame -> math.Value
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Group Input.003"].outputs[2],
+        glow_sprite_1.nodes["Math"].inputs[0]
+    )
+    # group_input.Geometry -> join_geometry.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Group Input"].outputs[0],
+        glow_sprite_1.nodes["Join Geometry"].inputs[0]
+    )
+    # geometry_to_instance.Instances -> join_geometry_001.Geometry
+    glow_sprite_1.links.new(
+        glow_sprite_1.nodes["Geometry to Instance"].outputs[0],
+        glow_sprite_1.nodes["Join Geometry.001"].inputs[0]
+    )
+
+    return glow_sprite_1
+
+def fxblend_1_node_group():
+    """Initialize FxBlend node group"""
+    fxblend_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "FxBlend")
+
+    fxblend_1.color_tag = 'NONE'
+    fxblend_1.description = ""
+    fxblend_1.default_group_node_width = 140
+    # fxblend_1 interface
+
+    # Socket Value
+    value_socket = fxblend_1.interface.new_socket(name="Value", in_out='OUTPUT', socket_type='NodeSocketFloat')
+    value_socket.default_value = 0.0
+    value_socket.min_value = -3.4028234663852886e+38
+    value_socket.max_value = 3.4028234663852886e+38
+    value_socket.subtype = 'NONE'
+    value_socket.attribute_domain = 'POINT'
+    value_socket.default_input = 'VALUE'
+    value_socket.structure_type = 'AUTO'
+
+    # Initialize fxblend_1 nodes
+
+    # Node Object Info.001
+    object_info_001 = fxblend_1.nodes.new("ShaderNodeObjectInfo")
+    object_info_001.name = "Object Info.001"
+
+    # Node Math.001
+    math_001 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'MULTIPLY'
+    math_001.use_clamp = False
+    # Value_001
+    math_001.inputs[1].default_value = 900.0
+
+    # Node Math.002
+    math_002 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'FLOOR'
+    math_002.use_clamp = False
+
+    # Node Math.003
+    math_003 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_003.label = "offset"
+    math_003.name = "Math.003"
+    math_003.operation = 'MULTIPLY'
+    math_003.use_clamp = False
+    # Value_001
+    math_003.inputs[1].default_value = 363.0
+
+    # Node Attribute.005
+    attribute_005 = fxblend_1.nodes.new("ShaderNodeAttribute")
+    attribute_005.label = "renderfx"
+    attribute_005.name = "Attribute.005"
+    attribute_005.attribute_name = "renderfx"
+    attribute_005.attribute_type = 'INSTANCER'
+
+    # Node Math.004
+    math_004 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_004.label = "PulseSlow"
+    math_004.name = "Math.004"
+    math_004.operation = 'COMPARE'
+    math_004.use_clamp = False
+    # Value_001
+    math_004.inputs[1].default_value = 1.0
+    # Value_002
+    math_004.inputs[2].default_value = 0.0
+
+    # Node Attribute.006
+    attribute_006 = fxblend_1.nodes.new("ShaderNodeAttribute")
+    attribute_006.label = "renderamt"
+    attribute_006.name = "Attribute.006"
+    attribute_006.attribute_name = "renderamt"
+    attribute_006.attribute_type = 'INSTANCER'
+
+    # Node Math.010
+    math_010 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_010.name = "Math.010"
+    math_010.operation = 'SINE'
+    math_010.use_clamp = False
+
+    # Node Attribute.007
+    attribute_007 = fxblend_1.nodes.new("ShaderNodeAttribute")
+    attribute_007.label = "time"
+    attribute_007.name = "Attribute.007"
+    attribute_007.attribute_name = "time"
+    attribute_007.attribute_type = 'VIEW_LAYER'
+
+    # Node Math.011
+    math_011 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_011.name = "Math.011"
+    math_011.operation = 'MULTIPLY'
+    math_011.use_clamp = False
+    # Value_001
+    math_011.inputs[1].default_value = 2.0
+
+    # Node Math.012
+    math_012 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_012.name = "Math.012"
+    math_012.operation = 'ADD'
+    math_012.use_clamp = False
+
+    # Node Math.013
+    math_013 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_013.name = "Math.013"
+    math_013.operation = 'MULTIPLY'
+    math_013.use_clamp = False
+    # Value_001
+    math_013.inputs[1].default_value = 16.0
+
+    # Node Math.014
+    math_014 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_014.name = "Math.014"
+    math_014.operation = 'ADD'
+    math_014.use_clamp = False
+
+    # Node Reroute
+    reroute = fxblend_1.nodes.new("NodeReroute")
+    reroute.name = "Reroute"
+    reroute.socket_idname = "NodeSocketFloat"
+    # Node Reroute.001
+    reroute_001 = fxblend_1.nodes.new("NodeReroute")
+    reroute_001.name = "Reroute.001"
+    reroute_001.socket_idname = "NodeSocketFloat"
+    # Node Reroute.002
+    reroute_002 = fxblend_1.nodes.new("NodeReroute")
+    reroute_002.name = "Reroute.002"
+    reroute_002.socket_idname = "NodeSocketFloat"
+    # Node Reroute.003
+    reroute_003 = fxblend_1.nodes.new("NodeReroute")
+    reroute_003.name = "Reroute.003"
+    reroute_003.socket_idname = "NodeSocketFloat"
+    # Node Reroute.004
+    reroute_004 = fxblend_1.nodes.new("NodeReroute")
+    reroute_004.name = "Reroute.004"
+    reroute_004.socket_idname = "NodeSocketFloat"
+    # Node Reroute.005
+    reroute_005 = fxblend_1.nodes.new("NodeReroute")
+    reroute_005.name = "Reroute.005"
+    reroute_005.socket_idname = "NodeSocketFloat"
+    # Node Reroute.006
+    reroute_006 = fxblend_1.nodes.new("NodeReroute")
+    reroute_006.name = "Reroute.006"
+    reroute_006.socket_idname = "NodeSocketFloat"
+    # Node Reroute.007
+    reroute_007 = fxblend_1.nodes.new("NodeReroute")
+    reroute_007.name = "Reroute.007"
+    reroute_007.socket_idname = "NodeSocketFloat"
+    # Node Reroute.008
+    reroute_008 = fxblend_1.nodes.new("NodeReroute")
+    reroute_008.name = "Reroute.008"
+    reroute_008.socket_idname = "NodeSocketFloat"
+    # Node Reroute.009
+    reroute_009 = fxblend_1.nodes.new("NodeReroute")
+    reroute_009.name = "Reroute.009"
+    reroute_009.socket_idname = "NodeSocketFloat"
+    # Node Reroute.010
+    reroute_010 = fxblend_1.nodes.new("NodeReroute")
+    reroute_010.name = "Reroute.010"
+    reroute_010.socket_idname = "NodeSocketFloat"
+    # Node Reroute.011
+    reroute_011 = fxblend_1.nodes.new("NodeReroute")
+    reroute_011.name = "Reroute.011"
+    reroute_011.socket_idname = "NodeSocketFloat"
+    # Node Reroute.012
+    reroute_012 = fxblend_1.nodes.new("NodeReroute")
+    reroute_012.name = "Reroute.012"
+    reroute_012.socket_idname = "NodeSocketFloat"
+    # Node Reroute.013
+    reroute_013 = fxblend_1.nodes.new("NodeReroute")
+    reroute_013.name = "Reroute.013"
+    reroute_013.socket_idname = "NodeSocketFloat"
+    # Node Reroute.014
+    reroute_014 = fxblend_1.nodes.new("NodeReroute")
+    reroute_014.name = "Reroute.014"
+    reroute_014.socket_idname = "NodeSocketFloat"
+    # Node Reroute.015
+    reroute_015 = fxblend_1.nodes.new("NodeReroute")
+    reroute_015.name = "Reroute.015"
+    reroute_015.socket_idname = "NodeSocketFloat"
+    # Node Reroute.016
+    reroute_016 = fxblend_1.nodes.new("NodeReroute")
+    reroute_016.name = "Reroute.016"
+    reroute_016.socket_idname = "NodeSocketFloat"
+    # Node Reroute.017
+    reroute_017 = fxblend_1.nodes.new("NodeReroute")
+    reroute_017.name = "Reroute.017"
+    reroute_017.socket_idname = "NodeSocketFloat"
+    # Node Reroute.018
+    reroute_018 = fxblend_1.nodes.new("NodeReroute")
+    reroute_018.name = "Reroute.018"
+    reroute_018.socket_idname = "NodeSocketFloat"
+    # Node Reroute.019
+    reroute_019 = fxblend_1.nodes.new("NodeReroute")
+    reroute_019.name = "Reroute.019"
+    reroute_019.socket_idname = "NodeSocketFloat"
+    # Node Reroute.020
+    reroute_020 = fxblend_1.nodes.new("NodeReroute")
+    reroute_020.name = "Reroute.020"
+    reroute_020.socket_idname = "NodeSocketFloat"
+    # Node Math.015
+    math_015 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_015.name = "Math.015"
+    math_015.operation = 'SINE'
+    math_015.use_clamp = False
+
+    # Node Math.016
+    math_016 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_016.name = "Math.016"
+    math_016.operation = 'MULTIPLY'
+    math_016.use_clamp = False
+    # Value_001
+    math_016.inputs[1].default_value = 8.0
+
+    # Node Math.017
+    math_017 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_017.name = "Math.017"
+    math_017.operation = 'ADD'
+    math_017.use_clamp = False
+
+    # Node Math.018
+    math_018 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_018.name = "Math.018"
+    math_018.operation = 'MULTIPLY'
+    math_018.use_clamp = False
+    # Value_001
+    math_018.inputs[1].default_value = 16.0
+
+    # Node Math.019
+    math_019 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_019.name = "Math.019"
+    math_019.operation = 'ADD'
+    math_019.use_clamp = False
+
+    # Node Math.020
+    math_020 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_020.name = "Math.020"
+    math_020.operation = 'SINE'
+    math_020.use_clamp = False
+
+    # Node Math.021
+    math_021 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_021.name = "Math.021"
+    math_021.operation = 'MULTIPLY'
+    math_021.use_clamp = False
+    # Value_001
+    math_021.inputs[1].default_value = 2.0
+
+    # Node Math.022
+    math_022 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_022.name = "Math.022"
+    math_022.operation = 'ADD'
+    math_022.use_clamp = False
+
+    # Node Math.023
+    math_023 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_023.name = "Math.023"
+    math_023.operation = 'MULTIPLY'
+    math_023.use_clamp = False
+    # Value_001
+    math_023.inputs[1].default_value = 64.0
+
+    # Node Math.024
+    math_024 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_024.name = "Math.024"
+    math_024.operation = 'ADD'
+    math_024.use_clamp = False
+
+    # Node Math.025
+    math_025 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_025.name = "Math.025"
+    math_025.operation = 'SINE'
+    math_025.use_clamp = False
+
+    # Node Math.026
+    math_026 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_026.name = "Math.026"
+    math_026.operation = 'MULTIPLY'
+    math_026.use_clamp = False
+    # Value_001
+    math_026.inputs[1].default_value = 8.0
+
+    # Node Math.027
+    math_027 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_027.name = "Math.027"
+    math_027.operation = 'ADD'
+    math_027.use_clamp = False
+
+    # Node Math.028
+    math_028 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_028.name = "Math.028"
+    math_028.operation = 'MULTIPLY'
+    math_028.use_clamp = False
+    # Value_001
+    math_028.inputs[1].default_value = 64.0
+
+    # Node Math.029
+    math_029 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_029.name = "Math.029"
+    math_029.operation = 'ADD'
+    math_029.use_clamp = False
+
+    # Node Math.030
+    math_030 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_030.name = "Math.030"
+    math_030.operation = 'MULTIPLY'
+    math_030.use_clamp = False
+    # Value_001
+    math_030.inputs[1].default_value = 4.0
+
+    # Node Math.031
+    math_031 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_031.name = "Math.031"
+    math_031.operation = 'ADD'
+    math_031.use_clamp = False
+
+    # Node Math.032
+    math_032 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_032.name = "Math.032"
+    math_032.operation = 'SINE'
+    math_032.use_clamp = False
+
+    # Node Math.033
+    math_033 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_033.name = "Math.033"
+    math_033.operation = 'MULTIPLY'
+    math_033.use_clamp = False
+    # Value_001
+    math_033.inputs[1].default_value = 20.0
+
+    # Node Mix.001
+    mix_001 = fxblend_1.nodes.new("ShaderNodeMix")
+    mix_001.name = "Mix.001"
+    mix_001.blend_type = 'MIX'
+    mix_001.clamp_factor = True
+    mix_001.clamp_result = False
+    mix_001.data_type = 'FLOAT'
+    mix_001.factor_mode = 'UNIFORM'
+
+    # Node Math.034
+    math_034 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_034.label = "PulseFast"
+    math_034.name = "Math.034"
+    math_034.operation = 'COMPARE'
+    math_034.use_clamp = False
+    # Value_001
+    math_034.inputs[1].default_value = 2.0
+    # Value_002
+    math_034.inputs[2].default_value = 0.0
+
+    # Node Math.035
+    math_035 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_035.label = "PulseSlowWide"
+    math_035.name = "Math.035"
+    math_035.operation = 'COMPARE'
+    math_035.use_clamp = False
+    # Value_001
+    math_035.inputs[1].default_value = 3.0
+    # Value_002
+    math_035.inputs[2].default_value = 0.0
+
+    # Node Math.036
+    math_036 = fxblend_1.nodes.new("ShaderNodeMath")
+    math_036.label = "PulseFastWide"
+    math_036.name = "Math.036"
+    math_036.operation = 'COMPARE'
+    math_036.use_clamp = False
+    # Value_001
+    math_036.inputs[1].default_value = 4.0
+    # Value_002
+    math_036.inputs[2].default_value = 0.0
+
+    # Node Mix.002
+    mix_002 = fxblend_1.nodes.new("ShaderNodeMix")
+    mix_002.name = "Mix.002"
+    mix_002.blend_type = 'MIX'
+    mix_002.clamp_factor = True
+    mix_002.clamp_result = False
+    mix_002.data_type = 'FLOAT'
+    mix_002.factor_mode = 'UNIFORM'
+
+    # Node Mix.003
+    mix_003 = fxblend_1.nodes.new("ShaderNodeMix")
+    mix_003.name = "Mix.003"
+    mix_003.blend_type = 'MIX'
+    mix_003.clamp_factor = True
+    mix_003.clamp_result = False
+    mix_003.data_type = 'FLOAT'
+    mix_003.factor_mode = 'UNIFORM'
+
+    # Node Mix.004
+    mix_004 = fxblend_1.nodes.new("ShaderNodeMix")
+    mix_004.name = "Mix.004"
+    mix_004.blend_type = 'MIX'
+    mix_004.clamp_factor = True
+    mix_004.clamp_result = False
+    mix_004.data_type = 'FLOAT'
+    mix_004.factor_mode = 'UNIFORM'
+
+    # Node Group Output
+    group_output = fxblend_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Set locations
+    fxblend_1.nodes["Object Info.001"].location = (-1060.0, 320.0)
+    fxblend_1.nodes["Math.001"].location = (-900.0, 320.0)
+    fxblend_1.nodes["Math.002"].location = (-740.0, 320.0)
+    fxblend_1.nodes["Math.003"].location = (-580.0, 320.0)
+    fxblend_1.nodes["Attribute.005"].location = (260.0, 500.0)
+    fxblend_1.nodes["Math.004"].location = (420.0, 220.0)
+    fxblend_1.nodes["Attribute.006"].location = (-580.0, 160.0)
+    fxblend_1.nodes["Math.010"].location = (-60.0, 220.0)
+    fxblend_1.nodes["Attribute.007"].location = (-580.0, 500.0)
+    fxblend_1.nodes["Math.011"].location = (-380.0, 220.0)
+    fxblend_1.nodes["Math.012"].location = (-220.0, 220.0)
+    fxblend_1.nodes["Math.013"].location = (100.0, 220.0)
+    fxblend_1.nodes["Math.014"].location = (260.0, 220.0)
+    fxblend_1.nodes["Reroute"].location = (-420.0, 300.0)
+    fxblend_1.nodes["Reroute.001"].location = (-420.0, 280.0)
+    fxblend_1.nodes["Reroute.002"].location = (-420.0, 260.0)
+    fxblend_1.nodes["Reroute.003"].location = (-400.0, 300.0)
+    fxblend_1.nodes["Reroute.004"].location = (-240.0, 300.0)
+    fxblend_1.nodes["Reroute.005"].location = (-80.0, 300.0)
+    fxblend_1.nodes["Reroute.006"].location = (80.0, 300.0)
+    fxblend_1.nodes["Reroute.007"].location = (-400.0, 280.0)
+    fxblend_1.nodes["Reroute.008"].location = (-240.0, 280.0)
+    fxblend_1.nodes["Reroute.009"].location = (-80.0, 280.0)
+    fxblend_1.nodes["Reroute.010"].location = (80.0, 280.0)
+    fxblend_1.nodes["Reroute.011"].location = (-400.0, 260.0)
+    fxblend_1.nodes["Reroute.012"].location = (-240.0, 260.0)
+    fxblend_1.nodes["Reroute.013"].location = (-80.0, 260.0)
+    fxblend_1.nodes["Reroute.014"].location = (80.0, 260.0)
+    fxblend_1.nodes["Reroute.015"].location = (240.0, 300.0)
+    fxblend_1.nodes["Reroute.016"].location = (400.0, 300.0)
+    fxblend_1.nodes["Reroute.017"].location = (240.0, 280.0)
+    fxblend_1.nodes["Reroute.018"].location = (400.0, 280.0)
+    fxblend_1.nodes["Reroute.019"].location = (240.0, 260.0)
+    fxblend_1.nodes["Reroute.020"].location = (560.0, 260.0)
+    fxblend_1.nodes["Math.015"].location = (-60.0, 40.0)
+    fxblend_1.nodes["Math.016"].location = (-380.0, 40.0)
+    fxblend_1.nodes["Math.017"].location = (-220.0, 40.0)
+    fxblend_1.nodes["Math.018"].location = (100.0, 40.0)
+    fxblend_1.nodes["Math.019"].location = (260.0, 40.0)
+    fxblend_1.nodes["Math.020"].location = (-60.0, -140.0)
+    fxblend_1.nodes["Math.021"].location = (-380.0, -140.0)
+    fxblend_1.nodes["Math.022"].location = (-220.0, -140.0)
+    fxblend_1.nodes["Math.023"].location = (100.0, -140.0)
+    fxblend_1.nodes["Math.024"].location = (260.0, -140.0)
+    fxblend_1.nodes["Math.025"].location = (-60.0, -320.0)
+    fxblend_1.nodes["Math.026"].location = (-380.0, -320.0)
+    fxblend_1.nodes["Math.027"].location = (-220.0, -320.0)
+    fxblend_1.nodes["Math.028"].location = (100.0, -320.0)
+    fxblend_1.nodes["Math.029"].location = (260.0, -320.0)
+    fxblend_1.nodes["Math.030"].location = (-380.0, -500.0)
+    fxblend_1.nodes["Math.031"].location = (-220.0, -500.0)
+    fxblend_1.nodes["Math.032"].location = (-60.0, -500.0)
+    fxblend_1.nodes["Math.033"].location = (100.0, -500.0)
+    fxblend_1.nodes["Mix.001"].location = (580.0, 220.0)
+    fxblend_1.nodes["Math.034"].location = (420.0, 40.0)
+    fxblend_1.nodes["Math.035"].location = (420.0, -140.0)
+    fxblend_1.nodes["Math.036"].location = (420.0, -320.0)
+    fxblend_1.nodes["Mix.002"].location = (740.0, 40.0)
+    fxblend_1.nodes["Mix.003"].location = (900.0, -140.0)
+    fxblend_1.nodes["Mix.004"].location = (1060.0, -320.0)
+    fxblend_1.nodes["Group Output"].location = (1220.0, -320.0)
+
+    # Set dimensions
+    fxblend_1.nodes["Object Info.001"].width  = 140.0
+    fxblend_1.nodes["Object Info.001"].height = 100.0
+
+    fxblend_1.nodes["Math.001"].width  = 140.0
+    fxblend_1.nodes["Math.001"].height = 100.0
+
+    fxblend_1.nodes["Math.002"].width  = 140.0
+    fxblend_1.nodes["Math.002"].height = 100.0
+
+    fxblend_1.nodes["Math.003"].width  = 140.0
+    fxblend_1.nodes["Math.003"].height = 100.0
+
+    fxblend_1.nodes["Attribute.005"].width  = 140.0
+    fxblend_1.nodes["Attribute.005"].height = 100.0
+
+    fxblend_1.nodes["Math.004"].width  = 140.0
+    fxblend_1.nodes["Math.004"].height = 100.0
+
+    fxblend_1.nodes["Attribute.006"].width  = 140.0
+    fxblend_1.nodes["Attribute.006"].height = 100.0
+
+    fxblend_1.nodes["Math.010"].width  = 140.0
+    fxblend_1.nodes["Math.010"].height = 100.0
+
+    fxblend_1.nodes["Attribute.007"].width  = 140.0
+    fxblend_1.nodes["Attribute.007"].height = 100.0
+
+    fxblend_1.nodes["Math.011"].width  = 140.0
+    fxblend_1.nodes["Math.011"].height = 100.0
+
+    fxblend_1.nodes["Math.012"].width  = 140.0
+    fxblend_1.nodes["Math.012"].height = 100.0
+
+    fxblend_1.nodes["Math.013"].width  = 140.0
+    fxblend_1.nodes["Math.013"].height = 100.0
+
+    fxblend_1.nodes["Math.014"].width  = 140.0
+    fxblend_1.nodes["Math.014"].height = 100.0
+
+    fxblend_1.nodes["Reroute"].width  = 10.0
+    fxblend_1.nodes["Reroute"].height = 100.0
+
+    fxblend_1.nodes["Reroute.001"].width  = 10.0
+    fxblend_1.nodes["Reroute.001"].height = 100.0
+
+    fxblend_1.nodes["Reroute.002"].width  = 10.0
+    fxblend_1.nodes["Reroute.002"].height = 100.0
+
+    fxblend_1.nodes["Reroute.003"].width  = 10.0
+    fxblend_1.nodes["Reroute.003"].height = 100.0
+
+    fxblend_1.nodes["Reroute.004"].width  = 10.0
+    fxblend_1.nodes["Reroute.004"].height = 100.0
+
+    fxblend_1.nodes["Reroute.005"].width  = 10.0
+    fxblend_1.nodes["Reroute.005"].height = 100.0
+
+    fxblend_1.nodes["Reroute.006"].width  = 10.0
+    fxblend_1.nodes["Reroute.006"].height = 100.0
+
+    fxblend_1.nodes["Reroute.007"].width  = 10.0
+    fxblend_1.nodes["Reroute.007"].height = 100.0
+
+    fxblend_1.nodes["Reroute.008"].width  = 10.0
+    fxblend_1.nodes["Reroute.008"].height = 100.0
+
+    fxblend_1.nodes["Reroute.009"].width  = 10.0
+    fxblend_1.nodes["Reroute.009"].height = 100.0
+
+    fxblend_1.nodes["Reroute.010"].width  = 10.0
+    fxblend_1.nodes["Reroute.010"].height = 100.0
+
+    fxblend_1.nodes["Reroute.011"].width  = 10.0
+    fxblend_1.nodes["Reroute.011"].height = 100.0
+
+    fxblend_1.nodes["Reroute.012"].width  = 10.0
+    fxblend_1.nodes["Reroute.012"].height = 100.0
+
+    fxblend_1.nodes["Reroute.013"].width  = 10.0
+    fxblend_1.nodes["Reroute.013"].height = 100.0
+
+    fxblend_1.nodes["Reroute.014"].width  = 10.0
+    fxblend_1.nodes["Reroute.014"].height = 100.0
+
+    fxblend_1.nodes["Reroute.015"].width  = 10.0
+    fxblend_1.nodes["Reroute.015"].height = 100.0
+
+    fxblend_1.nodes["Reroute.016"].width  = 10.0
+    fxblend_1.nodes["Reroute.016"].height = 100.0
+
+    fxblend_1.nodes["Reroute.017"].width  = 10.0
+    fxblend_1.nodes["Reroute.017"].height = 100.0
+
+    fxblend_1.nodes["Reroute.018"].width  = 10.0
+    fxblend_1.nodes["Reroute.018"].height = 100.0
+
+    fxblend_1.nodes["Reroute.019"].width  = 10.0
+    fxblend_1.nodes["Reroute.019"].height = 100.0
+
+    fxblend_1.nodes["Reroute.020"].width  = 10.0
+    fxblend_1.nodes["Reroute.020"].height = 100.0
+
+    fxblend_1.nodes["Math.015"].width  = 140.0
+    fxblend_1.nodes["Math.015"].height = 100.0
+
+    fxblend_1.nodes["Math.016"].width  = 140.0
+    fxblend_1.nodes["Math.016"].height = 100.0
+
+    fxblend_1.nodes["Math.017"].width  = 140.0
+    fxblend_1.nodes["Math.017"].height = 100.0
+
+    fxblend_1.nodes["Math.018"].width  = 140.0
+    fxblend_1.nodes["Math.018"].height = 100.0
+
+    fxblend_1.nodes["Math.019"].width  = 140.0
+    fxblend_1.nodes["Math.019"].height = 100.0
+
+    fxblend_1.nodes["Math.020"].width  = 140.0
+    fxblend_1.nodes["Math.020"].height = 100.0
+
+    fxblend_1.nodes["Math.021"].width  = 140.0
+    fxblend_1.nodes["Math.021"].height = 100.0
+
+    fxblend_1.nodes["Math.022"].width  = 140.0
+    fxblend_1.nodes["Math.022"].height = 100.0
+
+    fxblend_1.nodes["Math.023"].width  = 140.0
+    fxblend_1.nodes["Math.023"].height = 100.0
+
+    fxblend_1.nodes["Math.024"].width  = 140.0
+    fxblend_1.nodes["Math.024"].height = 100.0
+
+    fxblend_1.nodes["Math.025"].width  = 140.0
+    fxblend_1.nodes["Math.025"].height = 100.0
+
+    fxblend_1.nodes["Math.026"].width  = 140.0
+    fxblend_1.nodes["Math.026"].height = 100.0
+
+    fxblend_1.nodes["Math.027"].width  = 140.0
+    fxblend_1.nodes["Math.027"].height = 100.0
+
+    fxblend_1.nodes["Math.028"].width  = 140.0
+    fxblend_1.nodes["Math.028"].height = 100.0
+
+    fxblend_1.nodes["Math.029"].width  = 140.0
+    fxblend_1.nodes["Math.029"].height = 100.0
+
+    fxblend_1.nodes["Math.030"].width  = 140.0
+    fxblend_1.nodes["Math.030"].height = 100.0
+
+    fxblend_1.nodes["Math.031"].width  = 140.0
+    fxblend_1.nodes["Math.031"].height = 100.0
+
+    fxblend_1.nodes["Math.032"].width  = 140.0
+    fxblend_1.nodes["Math.032"].height = 100.0
+
+    fxblend_1.nodes["Math.033"].width  = 140.0
+    fxblend_1.nodes["Math.033"].height = 100.0
+
+    fxblend_1.nodes["Mix.001"].width  = 140.0
+    fxblend_1.nodes["Mix.001"].height = 100.0
+
+    fxblend_1.nodes["Math.034"].width  = 140.0
+    fxblend_1.nodes["Math.034"].height = 100.0
+
+    fxblend_1.nodes["Math.035"].width  = 140.0
+    fxblend_1.nodes["Math.035"].height = 100.0
+
+    fxblend_1.nodes["Math.036"].width  = 140.0
+    fxblend_1.nodes["Math.036"].height = 100.0
+
+    fxblend_1.nodes["Mix.002"].width  = 140.0
+    fxblend_1.nodes["Mix.002"].height = 100.0
+
+    fxblend_1.nodes["Mix.003"].width  = 140.0
+    fxblend_1.nodes["Mix.003"].height = 100.0
+
+    fxblend_1.nodes["Mix.004"].width  = 140.0
+    fxblend_1.nodes["Mix.004"].height = 100.0
+
+    fxblend_1.nodes["Group Output"].width  = 140.0
+    fxblend_1.nodes["Group Output"].height = 100.0
+
+
+    # Initialize fxblend_1 links
+
+    # object_info_001.Random -> math_001.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Object Info.001"].outputs[5],
+        fxblend_1.nodes["Math.001"].inputs[0]
+    )
+    # math_001.Value -> math_002.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.001"].outputs[0],
+        fxblend_1.nodes["Math.002"].inputs[0]
+    )
+    # math_002.Value -> math_003.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.002"].outputs[0],
+        fxblend_1.nodes["Math.003"].inputs[0]
+    )
+    # attribute_005.Factor -> math_004.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.005"].outputs[2],
+        fxblend_1.nodes["Math.004"].inputs[0]
+    )
+    # math_011.Value -> math_012.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.011"].outputs[0],
+        fxblend_1.nodes["Math.012"].inputs[0]
+    )
+    # math_012.Value -> math_010.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.012"].outputs[0],
+        fxblend_1.nodes["Math.010"].inputs[0]
+    )
+    # math_010.Value -> math_013.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.010"].outputs[0],
+        fxblend_1.nodes["Math.013"].inputs[0]
+    )
+    # math_013.Value -> math_014.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.013"].outputs[0],
+        fxblend_1.nodes["Math.014"].inputs[0]
+    )
+    # attribute_007.Factor -> reroute.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.007"].outputs[2],
+        fxblend_1.nodes["Reroute"].inputs[0]
+    )
+    # math_003.Value -> reroute_001.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.003"].outputs[0],
+        fxblend_1.nodes["Reroute.001"].inputs[0]
+    )
+    # attribute_006.Factor -> reroute_002.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.006"].outputs[2],
+        fxblend_1.nodes["Reroute.002"].inputs[0]
+    )
+    # reroute.Output -> reroute_003.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute"].outputs[0],
+        fxblend_1.nodes["Reroute.003"].inputs[0]
+    )
+    # reroute_003.Output -> reroute_004.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.003"].outputs[0],
+        fxblend_1.nodes["Reroute.004"].inputs[0]
+    )
+    # reroute_004.Output -> reroute_005.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.004"].outputs[0],
+        fxblend_1.nodes["Reroute.005"].inputs[0]
+    )
+    # reroute_005.Output -> reroute_006.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.005"].outputs[0],
+        fxblend_1.nodes["Reroute.006"].inputs[0]
+    )
+    # reroute_001.Output -> reroute_007.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.001"].outputs[0],
+        fxblend_1.nodes["Reroute.007"].inputs[0]
+    )
+    # reroute_007.Output -> reroute_008.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.007"].outputs[0],
+        fxblend_1.nodes["Reroute.008"].inputs[0]
+    )
+    # reroute_008.Output -> reroute_009.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Reroute.009"].inputs[0]
+    )
+    # reroute_009.Output -> reroute_010.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.009"].outputs[0],
+        fxblend_1.nodes["Reroute.010"].inputs[0]
+    )
+    # reroute_002.Output -> reroute_011.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.002"].outputs[0],
+        fxblend_1.nodes["Reroute.011"].inputs[0]
+    )
+    # reroute_011.Output -> reroute_012.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.011"].outputs[0],
+        fxblend_1.nodes["Reroute.012"].inputs[0]
+    )
+    # reroute_012.Output -> reroute_013.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.012"].outputs[0],
+        fxblend_1.nodes["Reroute.013"].inputs[0]
+    )
+    # reroute_013.Output -> reroute_014.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.013"].outputs[0],
+        fxblend_1.nodes["Reroute.014"].inputs[0]
+    )
+    # reroute_008.Output -> math_012.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Math.012"].inputs[1]
+    )
+    # reroute_015.Output -> reroute_016.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.015"].outputs[0],
+        fxblend_1.nodes["Reroute.016"].inputs[0]
+    )
+    # reroute_017.Output -> reroute_018.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.017"].outputs[0],
+        fxblend_1.nodes["Reroute.018"].inputs[0]
+    )
+    # reroute_019.Output -> reroute_020.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.019"].outputs[0],
+        fxblend_1.nodes["Reroute.020"].inputs[0]
+    )
+    # reroute_006.Output -> reroute_015.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.006"].outputs[0],
+        fxblend_1.nodes["Reroute.015"].inputs[0]
+    )
+    # reroute_010.Output -> reroute_017.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.010"].outputs[0],
+        fxblend_1.nodes["Reroute.017"].inputs[0]
+    )
+    # reroute_014.Output -> reroute_019.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.014"].outputs[0],
+        fxblend_1.nodes["Reroute.019"].inputs[0]
+    )
+    # reroute_019.Output -> math_014.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.019"].outputs[0],
+        fxblend_1.nodes["Math.014"].inputs[1]
+    )
+    # reroute_003.Output -> math_011.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.003"].outputs[0],
+        fxblend_1.nodes["Math.011"].inputs[0]
+    )
+    # math_016.Value -> math_017.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.016"].outputs[0],
+        fxblend_1.nodes["Math.017"].inputs[0]
+    )
+    # math_017.Value -> math_015.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.017"].outputs[0],
+        fxblend_1.nodes["Math.015"].inputs[0]
+    )
+    # math_015.Value -> math_018.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.015"].outputs[0],
+        fxblend_1.nodes["Math.018"].inputs[0]
+    )
+    # math_018.Value -> math_019.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.018"].outputs[0],
+        fxblend_1.nodes["Math.019"].inputs[0]
+    )
+    # reroute_003.Output -> math_016.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.003"].outputs[0],
+        fxblend_1.nodes["Math.016"].inputs[0]
+    )
+    # reroute_008.Output -> math_017.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Math.017"].inputs[1]
+    )
+    # reroute_019.Output -> math_019.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.019"].outputs[0],
+        fxblend_1.nodes["Math.019"].inputs[1]
+    )
+    # math_021.Value -> math_022.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.021"].outputs[0],
+        fxblend_1.nodes["Math.022"].inputs[0]
+    )
+    # math_022.Value -> math_020.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.022"].outputs[0],
+        fxblend_1.nodes["Math.020"].inputs[0]
+    )
+    # math_020.Value -> math_023.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.020"].outputs[0],
+        fxblend_1.nodes["Math.023"].inputs[0]
+    )
+    # math_023.Value -> math_024.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.023"].outputs[0],
+        fxblend_1.nodes["Math.024"].inputs[0]
+    )
+    # reroute_003.Output -> math_021.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.003"].outputs[0],
+        fxblend_1.nodes["Math.021"].inputs[0]
+    )
+    # reroute_008.Output -> math_022.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Math.022"].inputs[1]
+    )
+    # reroute_019.Output -> math_024.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.019"].outputs[0],
+        fxblend_1.nodes["Math.024"].inputs[1]
+    )
+    # math_026.Value -> math_027.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.026"].outputs[0],
+        fxblend_1.nodes["Math.027"].inputs[0]
+    )
+    # math_027.Value -> math_025.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.027"].outputs[0],
+        fxblend_1.nodes["Math.025"].inputs[0]
+    )
+    # math_025.Value -> math_028.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.025"].outputs[0],
+        fxblend_1.nodes["Math.028"].inputs[0]
+    )
+    # math_028.Value -> math_029.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.028"].outputs[0],
+        fxblend_1.nodes["Math.029"].inputs[0]
+    )
+    # reroute_003.Output -> math_026.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.003"].outputs[0],
+        fxblend_1.nodes["Math.026"].inputs[0]
+    )
+    # reroute_008.Output -> math_027.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Math.027"].inputs[1]
+    )
+    # reroute_019.Output -> math_029.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.019"].outputs[0],
+        fxblend_1.nodes["Math.029"].inputs[1]
+    )
+    # reroute_011.Output -> math_030.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.011"].outputs[0],
+        fxblend_1.nodes["Math.030"].inputs[0]
+    )
+    # math_030.Value -> math_031.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.030"].outputs[0],
+        fxblend_1.nodes["Math.031"].inputs[0]
+    )
+    # reroute_008.Output -> math_031.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.008"].outputs[0],
+        fxblend_1.nodes["Math.031"].inputs[1]
+    )
+    # math_031.Value -> math_032.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.031"].outputs[0],
+        fxblend_1.nodes["Math.032"].inputs[0]
+    )
+    # math_032.Value -> math_033.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.032"].outputs[0],
+        fxblend_1.nodes["Math.033"].inputs[0]
+    )
+    # math_004.Value -> mix_001.Factor
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.004"].outputs[0],
+        fxblend_1.nodes["Mix.001"].inputs[0]
+    )
+    # reroute_020.Output -> mix_001.A
+    fxblend_1.links.new(
+        fxblend_1.nodes["Reroute.020"].outputs[0],
+        fxblend_1.nodes["Mix.001"].inputs[2]
+    )
+    # math_014.Value -> mix_001.B
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.014"].outputs[0],
+        fxblend_1.nodes["Mix.001"].inputs[3]
+    )
+    # attribute_005.Factor -> math_034.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.005"].outputs[2],
+        fxblend_1.nodes["Math.034"].inputs[0]
+    )
+    # attribute_005.Factor -> math_035.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.005"].outputs[2],
+        fxblend_1.nodes["Math.035"].inputs[0]
+    )
+    # attribute_005.Factor -> math_036.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Attribute.005"].outputs[2],
+        fxblend_1.nodes["Math.036"].inputs[0]
+    )
+    # math_034.Value -> mix_002.Factor
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.034"].outputs[0],
+        fxblend_1.nodes["Mix.002"].inputs[0]
+    )
+    # mix_001.Result -> mix_002.A
+    fxblend_1.links.new(
+        fxblend_1.nodes["Mix.001"].outputs[0],
+        fxblend_1.nodes["Mix.002"].inputs[2]
+    )
+    # math_019.Value -> mix_002.B
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.019"].outputs[0],
+        fxblend_1.nodes["Mix.002"].inputs[3]
+    )
+    # math_035.Value -> mix_003.Factor
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.035"].outputs[0],
+        fxblend_1.nodes["Mix.003"].inputs[0]
+    )
+    # mix_002.Result -> mix_003.A
+    fxblend_1.links.new(
+        fxblend_1.nodes["Mix.002"].outputs[0],
+        fxblend_1.nodes["Mix.003"].inputs[2]
+    )
+    # math_024.Value -> mix_003.B
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.024"].outputs[0],
+        fxblend_1.nodes["Mix.003"].inputs[3]
+    )
+    # mix_003.Result -> mix_004.A
+    fxblend_1.links.new(
+        fxblend_1.nodes["Mix.003"].outputs[0],
+        fxblend_1.nodes["Mix.004"].inputs[2]
+    )
+    # math_036.Value -> mix_004.Factor
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.036"].outputs[0],
+        fxblend_1.nodes["Mix.004"].inputs[0]
+    )
+    # math_029.Value -> mix_004.B
+    fxblend_1.links.new(
+        fxblend_1.nodes["Math.029"].outputs[0],
+        fxblend_1.nodes["Mix.004"].inputs[3]
+    )
+    # mix_004.Result -> group_output.Value
+    fxblend_1.links.new(
+        fxblend_1.nodes["Mix.004"].outputs[0],
+        fxblend_1.nodes["Group Output"].inputs[0]
+    )
+
+    return fxblend_1
+
+# GlowBlend
+def glowblend_1_node_group():
+    """Initialize GlowBlend node group"""
+    glowblend_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "GlowBlend")
+
+    glowblend_1.color_tag = 'NONE'
+    glowblend_1.description = ""
+    glowblend_1.default_group_node_width = 140
+    # glowblend_1 interface
+
+    # Socket Value
+    value_socket = glowblend_1.interface.new_socket(name="Value", in_out='OUTPUT', socket_type='NodeSocketFloat')
+    value_socket.default_value = 0.0
+    value_socket.min_value = -3.4028234663852886e+38
+    value_socket.max_value = 3.4028234663852886e+38
+    value_socket.subtype = 'NONE'
+    value_socket.attribute_domain = 'POINT'
+    value_socket.default_input = 'VALUE'
+    value_socket.structure_type = 'AUTO'
+
+    # Initialize glowblend_1 nodes
+
+    # Node Attribute.003
+    attribute_003 = glowblend_1.nodes.new("ShaderNodeAttribute")
+    attribute_003.label = "PM_PlayerTrace"
+    attribute_003.name = "Attribute.003"
+    attribute_003.attribute_name = "visible"
+    attribute_003.attribute_type = 'GEOMETRY'
+
+    # Node Math.001
+    math_001 = glowblend_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'MULTIPLY'
+    math_001.use_clamp = False
+
+    # Node Attribute.006
+    attribute_006 = glowblend_1.nodes.new("ShaderNodeAttribute")
+    attribute_006.label = "renderamt"
+    attribute_006.name = "Attribute.006"
+    attribute_006.attribute_name = "renderamt"
+    attribute_006.attribute_type = 'OBJECT'
+
+    # Node Math.004
+    math_004 = glowblend_1.nodes.new("ShaderNodeMath")
+    math_004.name = "Math.004"
+    math_004.operation = 'DIVIDE'
+    math_004.use_clamp = False
+    # Value_001
+    math_004.inputs[1].default_value = 255.0
+
+    # Node Group Output
+    group_output = glowblend_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Set locations
+    glowblend_1.nodes["Attribute.003"].location = (0.0, 80.0)
+    glowblend_1.nodes["Math.001"].location = (160.0, 80.0)
+    glowblend_1.nodes["Attribute.006"].location = (-160.0, -100.0)
+    glowblend_1.nodes["Math.004"].location = (0.0, -100.0)
+    glowblend_1.nodes["Group Output"].location = (320.0, 80.0)
+
+    # Set dimensions
+    glowblend_1.nodes["Attribute.003"].width  = 140.0
+    glowblend_1.nodes["Attribute.003"].height = 100.0
+
+    glowblend_1.nodes["Math.001"].width  = 140.0
+    glowblend_1.nodes["Math.001"].height = 100.0
+
+    glowblend_1.nodes["Attribute.006"].width  = 140.0
+    glowblend_1.nodes["Attribute.006"].height = 100.0
+
+    glowblend_1.nodes["Math.004"].width  = 140.0
+    glowblend_1.nodes["Math.004"].height = 100.0
+
+    glowblend_1.nodes["Group Output"].width  = 140.0
+    glowblend_1.nodes["Group Output"].height = 100.0
+
+
+    # Initialize glowblend_1 links
+
+    # attribute_006.Factor -> math_004.Value
+    glowblend_1.links.new(
+        glowblend_1.nodes["Attribute.006"].outputs[2],
+        glowblend_1.nodes["Math.004"].inputs[0]
+    )
+    # attribute_003.Factor -> math_001.Value
+    glowblend_1.links.new(
+        glowblend_1.nodes["Attribute.003"].outputs[2],
+        glowblend_1.nodes["Math.001"].inputs[0]
+    )
+    # math_004.Value -> math_001.Value
+    glowblend_1.links.new(
+        glowblend_1.nodes["Math.004"].outputs[0],
+        glowblend_1.nodes["Math.001"].inputs[1]
+    )
+    # math_001.Value -> group_output.Value
+    glowblend_1.links.new(
+        glowblend_1.nodes["Math.001"].outputs[0],
+        glowblend_1.nodes["Group Output"].inputs[0]
+    )
+
+    return glowblend_1
+
+def _8_value_maximum_1_node_group():
+    """Initialize 8-Value Maximum node group"""
+    _8_value_maximum_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "8-Value Maximum")
+
+    _8_value_maximum_1.color_tag = 'CONVERTER'
+    _8_value_maximum_1.description = ""
+    _8_value_maximum_1.default_group_node_width = 140
+    # _8_value_maximum_1 interface
+
+    # Socket Value
+    value_socket = _8_value_maximum_1.interface.new_socket(name="Value", in_out='OUTPUT', socket_type='NodeSocketFloat')
+    value_socket.default_value = 0.0
+    value_socket.min_value = -3.4028234663852886e+38
+    value_socket.max_value = 3.4028234663852886e+38
+    value_socket.subtype = 'NONE'
+    value_socket.attribute_domain = 'POINT'
+    value_socket.default_input = 'VALUE'
+    value_socket.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_1 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_1.default_value = 0.0
+    value_socket_1.min_value = -10000.0
+    value_socket_1.max_value = 10000.0
+    value_socket_1.subtype = 'NONE'
+    value_socket_1.attribute_domain = 'POINT'
+    value_socket_1.default_input = 'VALUE'
+    value_socket_1.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_2 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_2.default_value = 0.0
+    value_socket_2.min_value = -10000.0
+    value_socket_2.max_value = 10000.0
+    value_socket_2.subtype = 'NONE'
+    value_socket_2.attribute_domain = 'POINT'
+    value_socket_2.default_input = 'VALUE'
+    value_socket_2.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_3 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_3.default_value = 0.0
+    value_socket_3.min_value = -10000.0
+    value_socket_3.max_value = 10000.0
+    value_socket_3.subtype = 'NONE'
+    value_socket_3.attribute_domain = 'POINT'
+    value_socket_3.default_input = 'VALUE'
+    value_socket_3.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_4 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_4.default_value = 0.0
+    value_socket_4.min_value = -10000.0
+    value_socket_4.max_value = 10000.0
+    value_socket_4.subtype = 'NONE'
+    value_socket_4.attribute_domain = 'POINT'
+    value_socket_4.default_input = 'VALUE'
+    value_socket_4.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_5 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_5.default_value = 0.0
+    value_socket_5.min_value = -10000.0
+    value_socket_5.max_value = 10000.0
+    value_socket_5.subtype = 'NONE'
+    value_socket_5.attribute_domain = 'POINT'
+    value_socket_5.default_input = 'VALUE'
+    value_socket_5.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_6 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_6.default_value = 0.0
+    value_socket_6.min_value = -10000.0
+    value_socket_6.max_value = 10000.0
+    value_socket_6.subtype = 'NONE'
+    value_socket_6.attribute_domain = 'POINT'
+    value_socket_6.default_input = 'VALUE'
+    value_socket_6.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_7 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_7.default_value = 0.0
+    value_socket_7.min_value = -10000.0
+    value_socket_7.max_value = 10000.0
+    value_socket_7.subtype = 'NONE'
+    value_socket_7.attribute_domain = 'POINT'
+    value_socket_7.default_input = 'VALUE'
+    value_socket_7.structure_type = 'AUTO'
+
+    # Socket Value
+    value_socket_8 = _8_value_maximum_1.interface.new_socket(name="Value", in_out='INPUT', socket_type='NodeSocketFloat')
+    value_socket_8.default_value = 0.0
+    value_socket_8.min_value = -10000.0
+    value_socket_8.max_value = 10000.0
+    value_socket_8.subtype = 'NONE'
+    value_socket_8.attribute_domain = 'POINT'
+    value_socket_8.default_input = 'VALUE'
+    value_socket_8.structure_type = 'AUTO'
+
+    # Initialize _8_value_maximum_1 nodes
+
+    # Node Math.004
+    math_004 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_004.name = "Math.004"
+    math_004.operation = 'MAXIMUM'
+    math_004.use_clamp = False
+
+    # Node Group Output
+    group_output = _8_value_maximum_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Node Group Input
+    group_input = _8_value_maximum_1.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+
+    # Node Math
+    math = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'MAXIMUM'
+    math.use_clamp = False
+
+    # Node Math.001
+    math_001 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'MAXIMUM'
+    math_001.use_clamp = False
+
+    # Node Math.005
+    math_005 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_005.name = "Math.005"
+    math_005.operation = 'MAXIMUM'
+    math_005.use_clamp = False
+
+    # Node Math.002
+    math_002 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'MAXIMUM'
+    math_002.use_clamp = False
+
+    # Node Math.003
+    math_003 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_003.name = "Math.003"
+    math_003.operation = 'MAXIMUM'
+    math_003.use_clamp = False
+
+    # Node Math.006
+    math_006 = _8_value_maximum_1.nodes.new("ShaderNodeMath")
+    math_006.name = "Math.006"
+    math_006.operation = 'MAXIMUM'
+    math_006.use_clamp = False
+
+    # Set locations
+    _8_value_maximum_1.nodes["Math.004"].location = (0.0, 0.0)
+    _8_value_maximum_1.nodes["Group Output"].location = (1120.0, -120.0)
+    _8_value_maximum_1.nodes["Group Input"].location = (-160.0, -80.0)
+    _8_value_maximum_1.nodes["Math"].location = (160.0, -20.0)
+    _8_value_maximum_1.nodes["Math.001"].location = (320.0, -40.0)
+    _8_value_maximum_1.nodes["Math.005"].location = (480.0, -60.0)
+    _8_value_maximum_1.nodes["Math.002"].location = (640.0, -80.0)
+    _8_value_maximum_1.nodes["Math.003"].location = (800.0, -100.0)
+    _8_value_maximum_1.nodes["Math.006"].location = (960.0, -120.0)
+
+    # Set dimensions
+    _8_value_maximum_1.nodes["Math.004"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.004"].height = 100.0
+
+    _8_value_maximum_1.nodes["Group Output"].width  = 140.0
+    _8_value_maximum_1.nodes["Group Output"].height = 100.0
+
+    _8_value_maximum_1.nodes["Group Input"].width  = 140.0
+    _8_value_maximum_1.nodes["Group Input"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math"].width  = 140.0
+    _8_value_maximum_1.nodes["Math"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math.001"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.001"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math.005"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.005"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math.002"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.002"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math.003"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.003"].height = 100.0
+
+    _8_value_maximum_1.nodes["Math.006"].width  = 140.0
+    _8_value_maximum_1.nodes["Math.006"].height = 100.0
+
+
+    # Initialize _8_value_maximum_1 links
+
+    # group_input.Value -> math_004.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[0],
+        _8_value_maximum_1.nodes["Math.004"].inputs[0]
+    )
+    # group_input.Value -> math_004.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[1],
+        _8_value_maximum_1.nodes["Math.004"].inputs[1]
+    )
+    # group_input.Value -> math.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[2],
+        _8_value_maximum_1.nodes["Math"].inputs[1]
+    )
+    # math_004.Value -> math.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.004"].outputs[0],
+        _8_value_maximum_1.nodes["Math"].inputs[0]
+    )
+    # math.Value -> math_001.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math"].outputs[0],
+        _8_value_maximum_1.nodes["Math.001"].inputs[0]
+    )
+    # group_input.Value -> math_001.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[3],
+        _8_value_maximum_1.nodes["Math.001"].inputs[1]
+    )
+    # math_005.Value -> math_002.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.005"].outputs[0],
+        _8_value_maximum_1.nodes["Math.002"].inputs[0]
+    )
+    # math_002.Value -> math_003.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.002"].outputs[0],
+        _8_value_maximum_1.nodes["Math.003"].inputs[0]
+    )
+    # math_001.Value -> math_005.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.001"].outputs[0],
+        _8_value_maximum_1.nodes["Math.005"].inputs[0]
+    )
+    # group_input.Value -> math_005.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[4],
+        _8_value_maximum_1.nodes["Math.005"].inputs[1]
+    )
+    # group_input.Value -> math_002.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[5],
+        _8_value_maximum_1.nodes["Math.002"].inputs[1]
+    )
+    # group_input.Value -> math_003.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[6],
+        _8_value_maximum_1.nodes["Math.003"].inputs[1]
+    )
+    # math_003.Value -> math_006.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.003"].outputs[0],
+        _8_value_maximum_1.nodes["Math.006"].inputs[0]
+    )
+    # group_input.Value -> math_006.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Group Input"].outputs[7],
+        _8_value_maximum_1.nodes["Math.006"].inputs[1]
+    )
+    # math_006.Value -> group_output.Value
+    _8_value_maximum_1.links.new(
+        _8_value_maximum_1.nodes["Math.006"].outputs[0],
+        _8_value_maximum_1.nodes["Group Output"].inputs[0]
+    )
+
+    return _8_value_maximum_1
+
+def viewent_modifier_1_node_group(options):
+    """Initialize Viewent Modifier node group"""
+    viewent_modifier_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "Viewent Modifier")
+
+    viewent_modifier_1.color_tag = 'NONE'
+    viewent_modifier_1.description = ""
+    viewent_modifier_1.default_group_node_width = 140
+    # viewent_modifier_1 interface
+
+    # Socket Shader
+    shader_socket = viewent_modifier_1.interface.new_socket(name="Shader", in_out='OUTPUT', socket_type='NodeSocketShader')
+    shader_socket.attribute_domain = 'POINT'
+    shader_socket.default_input = 'VALUE'
+    shader_socket.structure_type = 'AUTO'
+
+    # Socket Shader
+    shader_socket_1 = viewent_modifier_1.interface.new_socket(name="Shader", in_out='INPUT', socket_type='NodeSocketShader')
+    shader_socket_1.attribute_domain = 'POINT'
+    shader_socket_1.default_input = 'VALUE'
+    shader_socket_1.structure_type = 'AUTO'
+
+    # Initialize viewent_modifier_1 nodes
+
+    # Node Attribute
+    attribute = viewent_modifier_1.nodes.new("ShaderNodeAttribute")
+    attribute.name = "Attribute"
+    attribute.attribute_name = "draw_viewent"
+    attribute.attribute_type = 'VIEW_LAYER'
+
+    # Node Math.001
+    math_001 = viewent_modifier_1.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'MAXIMUM'
+    math_001.use_clamp = False
+
+    # Node Transparent BSDF
+    transparent_bsdf = viewent_modifier_1.nodes.new("ShaderNodeBsdfTransparent")
+    transparent_bsdf.name = "Transparent BSDF"
+    # Color
+    transparent_bsdf.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+
+    # Node Mix Shader
+    mix_shader = viewent_modifier_1.nodes.new("ShaderNodeMixShader")
+    mix_shader.name = "Mix Shader"
+
+    # Node Light Path.001
+    light_path_001 = viewent_modifier_1.nodes.new("ShaderNodeLightPath")
+    light_path_001.name = "Light Path.001"
+    light_path_001.outputs[8].hide = True
+    light_path_001.outputs[9].hide = True
+    light_path_001.outputs[10].hide = True
+    light_path_001.outputs[11].hide = True
+    light_path_001.outputs[12].hide = True
+    light_path_001.outputs[13].hide = True
+    light_path_001.outputs[14].hide = True
+
+    # Node Math.004
+    math_004 = viewent_modifier_1.nodes.new("ShaderNodeGroup")
+    math_004.name = "Math.004"
+    math_004.node_tree = ensure_group("8-Value Maximum")
+
+    # Node Group Output
+    group_output = viewent_modifier_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Node Group Input
+    group_input = viewent_modifier_1.nodes.new("NodeGroupInput")
+    group_input.name = "Group Input"
+
+    # Set locations
+    viewent_modifier_1.nodes["Attribute"].location = (-80.0, 340.0)
+    viewent_modifier_1.nodes["Math.001"].location = (80.0, 280.0)
+    viewent_modifier_1.nodes["Transparent BSDF"].location = (80.0, 120.0)
+    viewent_modifier_1.nodes["Mix Shader"].location = (240.0, 120.0)
+    viewent_modifier_1.nodes["Light Path.001"].location = (-240.0, 120.0)
+    viewent_modifier_1.nodes["Math.004"].location = (-80.0, 160.0)
+    viewent_modifier_1.nodes["Group Output"].location = (400.0, 120.0)
+    viewent_modifier_1.nodes["Group Input"].location = (80.0, 20.0)
+
+    # Set dimensions
+    viewent_modifier_1.nodes["Attribute"].width  = 140.0
+    viewent_modifier_1.nodes["Attribute"].height = 100.0
+
+    viewent_modifier_1.nodes["Math.001"].width  = 140.0
+    viewent_modifier_1.nodes["Math.001"].height = 100.0
+
+    viewent_modifier_1.nodes["Transparent BSDF"].width  = 140.0
+    viewent_modifier_1.nodes["Transparent BSDF"].height = 100.0
+
+    viewent_modifier_1.nodes["Mix Shader"].width  = 140.0
+    viewent_modifier_1.nodes["Mix Shader"].height = 100.0
+
+    viewent_modifier_1.nodes["Light Path.001"].width  = 140.0
+    viewent_modifier_1.nodes["Light Path.001"].height = 100.0
+
+    viewent_modifier_1.nodes["Math.004"].width  = 140.0
+    viewent_modifier_1.nodes["Math.004"].height = 100.0
+
+    viewent_modifier_1.nodes["Group Output"].width  = 140.0
+    viewent_modifier_1.nodes["Group Output"].height = 100.0
+
+    viewent_modifier_1.nodes["Group Input"].width  = 140.0
+    viewent_modifier_1.nodes["Group Input"].height = 100.0
+
+
+    # Initialize viewent_modifier_1 links
+
+    # math_001.Value -> mix_shader.Factor
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Math.001"].outputs[0],
+        viewent_modifier_1.nodes["Mix Shader"].inputs[0]
+    )
+    # attribute.Factor -> math_001.Value
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Attribute"].outputs[2],
+        viewent_modifier_1.nodes["Math.001"].inputs[0]
+    )
+    # math_004.Value -> math_001.Value
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Math.004"].outputs[0],
+        viewent_modifier_1.nodes["Math.001"].inputs[1]
+    )
+    # mix_shader.Shader -> group_output.Shader
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Mix Shader"].outputs[0],
+        viewent_modifier_1.nodes["Group Output"].inputs[0]
+    )
+    # transparent_bsdf.BSDF -> mix_shader.Shader
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Transparent BSDF"].outputs[0],
+        viewent_modifier_1.nodes["Mix Shader"].inputs[1]
+    )
+    # group_input.Shader -> mix_shader.Shader
+    viewent_modifier_1.links.new(
+        viewent_modifier_1.nodes["Group Input"].outputs[0],
+        viewent_modifier_1.nodes["Mix Shader"].inputs[2]
+    )
+    if options.viewent_camera_rays:
+        # light_path_001.Is Camera Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[0],
+            viewent_modifier_1.nodes["Math.004"].inputs[0]
+        )
+    if options.viewent_shadow_rays:
+        # light_path_001.Is Shadow Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[1],
+            viewent_modifier_1.nodes["Math.004"].inputs[1]
+        )
+    if options.viewent_diffuse_rays:
+        # light_path_001.Is Diffuse Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[2],
+            viewent_modifier_1.nodes["Math.004"].inputs[2]
+        )
+    if options.viewent_glossy_rays:
+        # light_path_001.Is Glossy Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[3],
+            viewent_modifier_1.nodes["Math.004"].inputs[3]
+        )
+    if options.viewent_reflection_rays:
+        # light_path_001.Is Reflection Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[5],
+            viewent_modifier_1.nodes["Math.004"].inputs[5]
+        )
+    if options.viewent_singular_rays:
+        # light_path_001.Is Singular Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[4],
+            viewent_modifier_1.nodes["Math.004"].inputs[4]
+        )
+    if options.viewent_transmission_rays:
+        # light_path_001.Is Transmission Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[6],
+            viewent_modifier_1.nodes["Math.004"].inputs[6]
+        )
+    if options.viewent_volume_scatter_rays:
+        # light_path_001.Is Volume Scatter Ray -> math_004.Value
+        viewent_modifier_1.links.new(
+            viewent_modifier_1.nodes["Light Path.001"].outputs[7],
+            viewent_modifier_1.nodes["Math.004"].inputs[7]
+        )
+
+    return viewent_modifier_1
 
 BUILDERS = {
     "Sprite Color": sprite_color_1_node_group,
@@ -2247,6 +4446,11 @@ BUILDERS = {
     "GoldSrc Emissive": goldsrc_emissive_1_node_group,
     "Beam Segment": beam_segment_1_node_group,
     "Animated Texture": animated_texture_1_node_group,
+    "Glow Sprite": glow_sprite_1_node_group,
+    "FxBlend": fxblend_1_node_group,
+    "GlowBlend": glowblend_1_node_group,
+    "8-Value Maximum": _8_value_maximum_1_node_group,
+    "Viewent Modifier": viewent_modifier_1_node_group,
 }
 
 def ensure_group(name: str):
@@ -2267,7 +4471,7 @@ def new(nodes, name: str) -> bpy.types.ShaderNodeGroup:
 
     return group_node
 
-def create_compositing_nodes(view_layer, no_depth_view_layer):
+def create_compositing_nodes_old(view_layer, no_depth_view_layer):
     bpy.context.scene.compositing_node_group = bpy.data.node_groups.new(type = 'CompositorNodeTree', name = "Compositing Nodetree")
     compositing_nodetree = bpy.context.scene.compositing_node_group
 
@@ -2415,7 +4619,407 @@ def create_compositing_nodes(view_layer, no_depth_view_layer):
 
     return compositing_nodetree
 
+def create_compositing_nodes_new_but_old(view_layer, no_depth_view_layer, viewent_view_layer):
+    bpy.context.scene.compositing_node_group = bpy.data.node_groups.new(type = 'CompositorNodeTree', name = "Compositing Nodetree")
+    compositing_nodetree = bpy.context.scene.compositing_node_group
+
+    # Start with a clean node tree
+    for node in compositing_nodetree.nodes:
+        compositing_nodetree.nodes.remove(node)
+    compositing_nodetree.color_tag = 'NONE'
+    compositing_nodetree.description = ""
+    compositing_nodetree.default_group_node_width = 140
+    # compositing_nodetree interface
+
+    # Socket Image
+    image_socket = compositing_nodetree.interface.new_socket(name="Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+    image_socket.default_value = (0.0, 0.0, 0.0, 1.0)
+    image_socket.attribute_domain = 'POINT'
+    image_socket.default_input = 'VALUE'
+    image_socket.structure_type = 'AUTO'
+
+    # Socket Image
+    image_socket_1 = compositing_nodetree.interface.new_socket(name="Image", in_out='INPUT', socket_type='NodeSocketColor')
+    image_socket_1.default_value = (0.0, 0.0, 0.0, 1.0)
+    image_socket_1.attribute_domain = 'POINT'
+    image_socket_1.default_input = 'VALUE'
+    image_socket_1.structure_type = 'AUTO'
+
+    # Initialize compositing_nodetree nodes
+
+    # Node Render Layers
+    render_layers = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers.name = "Render Layers"
+    render_layers.layer = view_layer.name
+
+    # Node Group Output
+    group_output = compositing_nodetree.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Node Viewer
+    viewer = compositing_nodetree.nodes.new("CompositorNodeViewer")
+    viewer.name = "Viewer"
+    viewer.ui_shortcut = 0
+
+    # Node Render Layers.001
+    render_layers_001 = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers_001.name = "Render Layers.001"
+    render_layers_001.layer = no_depth_view_layer.name
+
+    # Node Math
+    math = compositing_nodetree.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'SUBTRACT'
+    math.use_clamp = False
+    # Value
+    math.inputs[0].default_value = 1.0
+
+    # Node Cryptomatte
+    cryptomatte = compositing_nodetree.nodes.new("CompositorNodeCryptomatteV2")
+    cryptomatte.name = "Cryptomatte"
+    cryptomatte.add = mathutils.Color((0.0, 0.0, 0.0))
+    cryptomatte.frame_duration = 0
+    cryptomatte.frame_offset = 0
+    cryptomatte.frame_start = 0
+    cryptomatte.layer_name = 'ViewLayer.CryptoAsset'
+    cryptomatte.matte_id = "viewent"
+    cryptomatte.remove = mathutils.Color((0.0, 0.0, 0.0))
+    cryptomatte.source = 'RENDER'
+    cryptomatte.use_auto_refresh = False
+    cryptomatte.use_cyclic = False
+    # Image
+    cryptomatte.inputs[0].default_value = (0.0, 0.0, 0.0, 1.0)
+
+    # Node Mix
+    mix = compositing_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'ADD'
+    mix.clamp_factor = True
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+
+    # Node Render Layers.002
+    render_layers_002 = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers_002.name = "Render Layers.002"
+    render_layers_002.layer = viewent_view_layer.name
+
+    # Node Reroute
+    reroute = compositing_nodetree.nodes.new("NodeReroute")
+    reroute.name = "Reroute"
+    reroute.socket_idname = "NodeSocketColor"
+    # Node Alpha Over
+    alpha_over = compositing_nodetree.nodes.new("CompositorNodeAlphaOver")
+    alpha_over.name = "Alpha Over"
+    # Fac
+    alpha_over.inputs[2].default_value = 1.0
+    # Type
+    alpha_over.inputs[3].default_value = 'Over'
+    # Straight Alpha
+    alpha_over.inputs[4].default_value = False
+
+    # Node Set Alpha
+    set_alpha = compositing_nodetree.nodes.new("CompositorNodeSetAlpha")
+    set_alpha.name = "Set Alpha"
+    # Type
+    set_alpha.inputs[2].default_value = 'Apply Mask'
+
+    # Node Frame
+    frame = compositing_nodetree.nodes.new("NodeFrame")
+    frame.name = "Frame"
+    frame.label_size = 20
+    frame.shrink = True
+
+    # Set parents
+    compositing_nodetree.nodes["Group Output"].parent = compositing_nodetree.nodes["Frame"]
+    compositing_nodetree.nodes["Viewer"].parent = compositing_nodetree.nodes["Frame"]
+    compositing_nodetree.nodes["Reroute"].parent = compositing_nodetree.nodes["Frame"]
+
+    # Set locations
+    compositing_nodetree.nodes["Render Layers"].location = (-220.0, 120.0)
+    compositing_nodetree.nodes["Group Output"].location = (55.0, -90.0)
+    compositing_nodetree.nodes["Viewer"].location = (55.0, -30.0)
+    compositing_nodetree.nodes["Render Layers.001"].location = (-220.0, -260.0)
+    compositing_nodetree.nodes["Math"].location = (200.0, 260.0)
+    compositing_nodetree.nodes["Cryptomatte"].location = (-220.0, 360.0)
+    compositing_nodetree.nodes["Mix"].location = (360.0, 120.0)
+    compositing_nodetree.nodes["Render Layers.002"].location = (-220.0, -100.0)
+    compositing_nodetree.nodes["Reroute"].location = (35.0, -90.0)
+    compositing_nodetree.nodes["Alpha Over"].location = (200.0, 100.0)
+    compositing_nodetree.nodes["Set Alpha"].location = (40.0, 40.0)
+    compositing_nodetree.nodes["Frame"].location = (525.0, 150.0)
+
+    # Set dimensions
+    compositing_nodetree.nodes["Render Layers"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers"].height = 100.0
+
+    compositing_nodetree.nodes["Group Output"].width  = 140.0
+    compositing_nodetree.nodes["Group Output"].height = 100.0
+
+    compositing_nodetree.nodes["Viewer"].width  = 140.0
+    compositing_nodetree.nodes["Viewer"].height = 100.0
+
+    compositing_nodetree.nodes["Render Layers.001"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers.001"].height = 100.0
+
+    compositing_nodetree.nodes["Math"].width  = 140.0
+    compositing_nodetree.nodes["Math"].height = 100.0
+
+    compositing_nodetree.nodes["Cryptomatte"].width  = 240.0
+    compositing_nodetree.nodes["Cryptomatte"].height = 100.0
+
+    compositing_nodetree.nodes["Mix"].width  = 140.0
+    compositing_nodetree.nodes["Mix"].height = 100.0
+
+    compositing_nodetree.nodes["Render Layers.002"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers.002"].height = 100.0
+
+    compositing_nodetree.nodes["Reroute"].width  = 10.0
+    compositing_nodetree.nodes["Reroute"].height = 100.0
+
+    compositing_nodetree.nodes["Alpha Over"].width  = 140.0
+    compositing_nodetree.nodes["Alpha Over"].height = 100.0
+
+    compositing_nodetree.nodes["Set Alpha"].width  = 140.0
+    compositing_nodetree.nodes["Set Alpha"].height = 100.0
+
+    compositing_nodetree.nodes["Frame"].width  = 225.0
+    compositing_nodetree.nodes["Frame"].height = 192.0
+
+
+    # Initialize compositing_nodetree links
+
+    # cryptomatte.Matte -> math.Value
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Cryptomatte"].outputs[1],
+        compositing_nodetree.nodes["Math"].inputs[1]
+    )
+    # alpha_over.Image -> mix.A
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Alpha Over"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[6]
+    )
+    # render_layers_001.Image -> mix.B
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers.001"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[7]
+    )
+    # math.Value -> mix.Factor
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Math"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[0]
+    )
+    # reroute.Output -> group_output.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Reroute"].outputs[0],
+        compositing_nodetree.nodes["Group Output"].inputs[0]
+    )
+    # reroute.Output -> viewer.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Reroute"].outputs[0],
+        compositing_nodetree.nodes["Viewer"].inputs[0]
+    )
+    # mix.Result -> reroute.Input
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Mix"].outputs[2],
+        compositing_nodetree.nodes["Reroute"].inputs[0]
+    )
+    # render_layers.Image -> alpha_over.Background
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers"].outputs[0],
+        compositing_nodetree.nodes["Alpha Over"].inputs[0]
+    )
+    # render_layers_002.Image -> set_alpha.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers.002"].outputs[0],
+        compositing_nodetree.nodes["Set Alpha"].inputs[0]
+    )
+    # set_alpha.Image -> alpha_over.Foreground
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Set Alpha"].outputs[0],
+        compositing_nodetree.nodes["Alpha Over"].inputs[1]
+    )
+    # cryptomatte.Matte -> set_alpha.Alpha
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Cryptomatte"].outputs[1],
+        compositing_nodetree.nodes["Set Alpha"].inputs[1]
+    )
+
+    return compositing_nodetree
+
+def create_compositing_nodes(default_view_layer, no_depth_view_layer, viewent_view_layer):
+    bpy.context.scene.compositing_node_group = bpy.data.node_groups.new(type = 'CompositorNodeTree', name = "Compositing Nodetree")
+    compositing_nodetree = bpy.context.scene.compositing_node_group
+
+    # Start with a clean node tree
+    for node in compositing_nodetree.nodes:
+        compositing_nodetree.nodes.remove(node)
+    compositing_nodetree.color_tag = 'NONE'
+    compositing_nodetree.description = ""
+    compositing_nodetree.default_group_node_width = 140
+    # compositing_nodetree interface
+
+    # Socket Image
+    image_socket = compositing_nodetree.interface.new_socket(name="Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+    image_socket.default_value = (0.0, 0.0, 0.0, 1.0)
+    image_socket.attribute_domain = 'POINT'
+    image_socket.default_input = 'VALUE'
+    image_socket.structure_type = 'AUTO'
+
+    # Socket Image
+    image_socket_1 = compositing_nodetree.interface.new_socket(name="Image", in_out='INPUT', socket_type='NodeSocketColor')
+    image_socket_1.default_value = (0.0, 0.0, 0.0, 1.0)
+    image_socket_1.attribute_domain = 'POINT'
+    image_socket_1.default_input = 'VALUE'
+    image_socket_1.structure_type = 'AUTO'
+
+    # Initialize compositing_nodetree nodes
+
+    # Node Render Layers
+    render_layers = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers.name = "Render Layers"
+    render_layers.layer = default_view_layer.name
+
+    # Node Group Output
+    group_output = compositing_nodetree.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+
+    # Node Viewer
+    viewer = compositing_nodetree.nodes.new("CompositorNodeViewer")
+    viewer.name = "Viewer"
+    viewer.ui_shortcut = 0
+
+    # Node Render Layers.001
+    render_layers_001 = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers_001.name = "Render Layers.001"
+    render_layers_001.layer = no_depth_view_layer.name
+
+    # Node Mix
+    mix = compositing_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'ADD'
+    mix.clamp_factor = False
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+    # Factor_Float
+    mix.inputs[0].default_value = 1.0
+
+    # Node Render Layers.002
+    render_layers_002 = compositing_nodetree.nodes.new("CompositorNodeRLayers")
+    render_layers_002.name = "Render Layers.002"
+    render_layers_002.layer = viewent_view_layer.name
+
+    # Node Reroute
+    reroute = compositing_nodetree.nodes.new("NodeReroute")
+    reroute.name = "Reroute"
+    reroute.socket_idname = "NodeSocketColor"
+    # Node Alpha Over
+    alpha_over = compositing_nodetree.nodes.new("CompositorNodeAlphaOver")
+    alpha_over.name = "Alpha Over"
+    # Fac
+    alpha_over.inputs[2].default_value = 1.0
+    # Type
+    alpha_over.inputs[3].default_value = 'Over'
+    # Straight Alpha
+    alpha_over.inputs[4].default_value = False
+
+    # Node Frame
+    frame = compositing_nodetree.nodes.new("NodeFrame")
+    frame.name = "Frame"
+    frame.label_size = 20
+    frame.shrink = True
+
+    # Set parents
+    compositing_nodetree.nodes["Group Output"].parent = compositing_nodetree.nodes["Frame"]
+    compositing_nodetree.nodes["Viewer"].parent = compositing_nodetree.nodes["Frame"]
+    compositing_nodetree.nodes["Reroute"].parent = compositing_nodetree.nodes["Frame"]
+
+    # Set locations
+    compositing_nodetree.nodes["Render Layers"].location = (-220.0, 180.0)
+    compositing_nodetree.nodes["Group Output"].location = (55.0, -90.0)
+    compositing_nodetree.nodes["Viewer"].location = (55.0, -30.0)
+    compositing_nodetree.nodes["Render Layers.001"].location = (-220.0, 20.0)
+    compositing_nodetree.nodes["Mix"].location = (40.0, 180.0)
+    compositing_nodetree.nodes["Render Layers.002"].location = (-220.0, -140.0)
+    compositing_nodetree.nodes["Reroute"].location = (35.0, -90.0)
+    compositing_nodetree.nodes["Alpha Over"].location = (200.0, 20.0)
+    compositing_nodetree.nodes["Frame"].location = (365.0, 50.0)
+
+    # Set dimensions
+    compositing_nodetree.nodes["Render Layers"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers"].height = 100.0
+
+    compositing_nodetree.nodes["Group Output"].width  = 140.0
+    compositing_nodetree.nodes["Group Output"].height = 100.0
+
+    compositing_nodetree.nodes["Viewer"].width  = 140.0
+    compositing_nodetree.nodes["Viewer"].height = 100.0
+
+    compositing_nodetree.nodes["Render Layers.001"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers.001"].height = 100.0
+
+    compositing_nodetree.nodes["Mix"].width  = 140.0
+    compositing_nodetree.nodes["Mix"].height = 100.0
+
+    compositing_nodetree.nodes["Render Layers.002"].width  = 240.0
+    compositing_nodetree.nodes["Render Layers.002"].height = 100.0
+
+    compositing_nodetree.nodes["Reroute"].width  = 10.0
+    compositing_nodetree.nodes["Reroute"].height = 100.0
+
+    compositing_nodetree.nodes["Alpha Over"].width  = 140.0
+    compositing_nodetree.nodes["Alpha Over"].height = 100.0
+
+    compositing_nodetree.nodes["Frame"].width  = 225.0
+    compositing_nodetree.nodes["Frame"].height = 192.0
+
+
+    # Initialize compositing_nodetree links
+
+    # render_layers_001.Image -> mix.B
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers.001"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[7]
+    )
+    # reroute.Output -> group_output.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Reroute"].outputs[0],
+        compositing_nodetree.nodes["Group Output"].inputs[0]
+    )
+    # reroute.Output -> viewer.Image
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Reroute"].outputs[0],
+        compositing_nodetree.nodes["Viewer"].inputs[0]
+    )
+    # render_layers_002.Image -> alpha_over.Foreground
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers.002"].outputs[0],
+        compositing_nodetree.nodes["Alpha Over"].inputs[1]
+    )
+    # render_layers.Image -> mix.A
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Render Layers"].outputs[0],
+        compositing_nodetree.nodes["Mix"].inputs[6]
+    )
+    # mix.Result -> alpha_over.Background
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Mix"].outputs[2],
+        compositing_nodetree.nodes["Alpha Over"].inputs[0]
+    )
+    # alpha_over.Image -> reroute.Input
+    compositing_nodetree.links.new(
+        compositing_nodetree.nodes["Alpha Over"].outputs[0],
+        compositing_nodetree.nodes["Reroute"].inputs[0]
+    )
+
+    return compositing_nodetree
+
+# R_DrawSpriteModel and some context in R_DrawTEntitiesOnList
 def setup_sprite_nodes(shader_nodetree, image, frame_count):
+    """Initialize Shader Nodetree node group"""
     # Node Group
     group = shader_nodetree.nodes.new("ShaderNodeGroup")
     group.name = "Group"
@@ -2494,12 +5098,6 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     math_005.use_clamp = False
     # Value
     math_005.inputs[0].default_value = 1.0
-
-    # Node Attribute.003
-    attribute_003 = shader_nodetree.nodes.new("ShaderNodeAttribute")
-    attribute_003.name = "Attribute.003"
-    attribute_003.attribute_name = "r_blend"
-    attribute_003.attribute_type = 'OBJECT'
 
     # Node Math.006
     math_006 = shader_nodetree.nodes.new("ShaderNodeMath")
@@ -2597,31 +5195,82 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     # Normal
     diffuse_bsdf.inputs[2].default_value = (0.0, 0.0, 0.0)
 
+    # Node Group.002
+    group_002 = shader_nodetree.nodes.new("ShaderNodeGroup")
+    group_002.name = "Group.002"
+    group_002.node_tree = ensure_group("FxBlend")
+
+    # Node Math.010
+    math_010 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_010.label = "Is Glow"
+    math_010.name = "Math.010"
+    math_010.operation = 'COMPARE'
+    math_010.use_clamp = False
+    # Value_001
+    math_010.inputs[1].default_value = 3.0
+    # Value_002
+    math_010.inputs[2].default_value = 0.0
+
+    # Node Math.002
+    math_002 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'DIVIDE'
+    math_002.use_clamp = False
+    # Value_001
+    math_002.inputs[1].default_value = 255.0
+
+    # Node Math.003
+    math_003 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_003.name = "Math.003"
+    math_003.operation = 'MULTIPLY'
+    math_003.use_clamp = False
+    # Value_001
+    math_003.inputs[1].default_value = 255.0
+
+    # Node Group.003
+    group_003 = shader_nodetree.nodes.new("ShaderNodeGroup")
+    group_003.name = "Group.003"
+    group_003.node_tree = ensure_group("GlowBlend")
+
+    # Node Mix.001
+    mix_001 = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix_001.name = "Mix.001"
+    mix_001.blend_type = 'MIX'
+    mix_001.clamp_factor = False
+    mix_001.clamp_result = False
+    mix_001.data_type = 'FLOAT'
+    mix_001.factor_mode = 'UNIFORM'
+
     # Set locations
-    shader_nodetree.nodes["Group"].location = (-180.0, -1120.0)
-    shader_nodetree.nodes["Group.001"].location = (-340.0, -1360.0)
-    shader_nodetree.nodes["Image Texture"].location = (-180.0, -1220.0)
-    shader_nodetree.nodes["Attribute.002"].location = (-340.0, -800.0)
+    shader_nodetree.nodes["Group"].location = (-20.0, -1100.0)
+    shader_nodetree.nodes["Group.001"].location = (-340.0, -1340.0)
+    shader_nodetree.nodes["Image Texture"].location = (-180.0, -1280.0)
+    shader_nodetree.nodes["Attribute.002"].location = (-660.0, -800.0)
     shader_nodetree.nodes["Mix"].location = (140.0, -940.0)
     shader_nodetree.nodes["Emission"].location = (460.0, -940.0)
-    shader_nodetree.nodes["Material Output.001"].location = (1760.0, -940.0)
+    shader_nodetree.nodes["Material Output.001"].location = (1740.0, -940.0)
     shader_nodetree.nodes["Math"].location = (-180.0, -940.0)
     shader_nodetree.nodes["Math.005"].location = (-20.0, -940.0)
-    shader_nodetree.nodes["Attribute.003"].location = (140.0, -1180.0)
     shader_nodetree.nodes["Math.006"].location = (300.0, -1180.0)
     shader_nodetree.nodes["Mix Shader"].location = (460.0, -1060.0)
     shader_nodetree.nodes["Transparent BSDF"].location = (300.0, -1080.0)
     shader_nodetree.nodes["Math.007"].location = (620.0, -760.0)
     shader_nodetree.nodes["Mix Shader.001"].location = (780.0, -940.0)
-    shader_nodetree.nodes["Transparent BSDF.003"].location = (460.0, -1220.0)
+    shader_nodetree.nodes["Transparent BSDF.003"].location = (460.0, -1200.0)
     shader_nodetree.nodes["Math.008"].location = (940.0, -760.0)
     shader_nodetree.nodes["Add Shader"].location = (780.0, -1080.0)
     shader_nodetree.nodes["Mix Shader.006"].location = (1100.0, -940.0)
     shader_nodetree.nodes["Attribute.004"].location = (1260.0, -760.0)
     shader_nodetree.nodes["Math.009"].location = (1420.0, -760.0)
-    shader_nodetree.nodes["Mix Shader.007"].location = (1600.0, -940.0)
+    shader_nodetree.nodes["Mix Shader.007"].location = (1580.0, -940.0)
     shader_nodetree.nodes["Mix Shader.008"].location = (1100.0, -1080.0)
     shader_nodetree.nodes["Diffuse BSDF"].location = (300.0, -940.0)
+    shader_nodetree.nodes["Group.002"].location = (-660.0, -1180.0)
+    shader_nodetree.nodes["Math.010"].location = (-500.0, -1000.0)
+    shader_nodetree.nodes["Math.002"].location = (-500.0, -1180.0)
+    shader_nodetree.nodes["Math.003"].location = (-180.0, -1120.0)
+    shader_nodetree.nodes["Group.003"].location = (-500.0, -1340.0)
+    shader_nodetree.nodes["Mix.001"].location = (-340.0, -1120.0)
 
     # Set dimensions
     shader_nodetree.nodes["Group"].width  = 140.0
@@ -2650,9 +5299,6 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
 
     shader_nodetree.nodes["Math.005"].width  = 140.0
     shader_nodetree.nodes["Math.005"].height = 100.0
-
-    shader_nodetree.nodes["Attribute.003"].width  = 140.0
-    shader_nodetree.nodes["Attribute.003"].height = 100.0
 
     shader_nodetree.nodes["Math.006"].width  = 140.0
     shader_nodetree.nodes["Math.006"].height = 100.0
@@ -2696,6 +5342,24 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     shader_nodetree.nodes["Diffuse BSDF"].width  = 140.0
     shader_nodetree.nodes["Diffuse BSDF"].height = 100.0
 
+    shader_nodetree.nodes["Group.002"].width  = 140.0
+    shader_nodetree.nodes["Group.002"].height = 100.0
+
+    shader_nodetree.nodes["Math.010"].width  = 140.0
+    shader_nodetree.nodes["Math.010"].height = 100.0
+
+    shader_nodetree.nodes["Math.002"].width  = 140.0
+    shader_nodetree.nodes["Math.002"].height = 100.0
+
+    shader_nodetree.nodes["Math.003"].width  = 140.0
+    shader_nodetree.nodes["Math.003"].height = 100.0
+
+    shader_nodetree.nodes["Group.003"].width  = 140.0
+    shader_nodetree.nodes["Group.003"].height = 100.0
+
+    shader_nodetree.nodes["Mix.001"].width  = 140.0
+    shader_nodetree.nodes["Mix.001"].height = 100.0
+
 
     # Initialize shader_nodetree links
 
@@ -2723,16 +5387,6 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     shader_nodetree.links.new(
         shader_nodetree.nodes["Math"].outputs[0],
         shader_nodetree.nodes["Math.005"].inputs[1]
-    )
-    # math_005.Value -> mix.Factor
-    shader_nodetree.links.new(
-        shader_nodetree.nodes["Math.005"].outputs[0],
-        shader_nodetree.nodes["Mix"].inputs[0]
-    )
-    # attribute_003.Factor -> math_006.Value
-    shader_nodetree.links.new(
-        shader_nodetree.nodes["Attribute.003"].outputs[2],
-        shader_nodetree.nodes["Math.006"].inputs[1]
     )
     # image_texture.Alpha -> math_006.Value
     shader_nodetree.links.new(
@@ -2789,11 +5443,6 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
         shader_nodetree.nodes["Mix Shader.001"].outputs[0],
         shader_nodetree.nodes["Mix Shader.006"].inputs[1]
     )
-    # mix_shader_007.Shader -> material_output_001.Surface
-    shader_nodetree.links.new(
-        shader_nodetree.nodes["Mix Shader.007"].outputs[0],
-        shader_nodetree.nodes["Material Output.001"].inputs[0]
-    )
     # attribute_004.Factor -> math_009.Value
     shader_nodetree.links.new(
         shader_nodetree.nodes["Attribute.004"].outputs[2],
@@ -2803,11 +5452,6 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     shader_nodetree.links.new(
         shader_nodetree.nodes["Mix Shader.006"].outputs[0],
         shader_nodetree.nodes["Mix Shader.007"].inputs[1]
-    )
-    # math_009.Value -> mix_shader_007.Factor
-    shader_nodetree.links.new(
-        shader_nodetree.nodes["Math.009"].outputs[0],
-        shader_nodetree.nodes["Mix Shader.007"].inputs[0]
     )
     # mix_shader_008.Shader -> mix_shader_007.Shader
     shader_nodetree.links.new(
@@ -2853,6 +5497,61 @@ def setup_sprite_nodes(shader_nodetree, image, frame_count):
     shader_nodetree.links.new(
         shader_nodetree.nodes["Transparent BSDF.003"].outputs[0],
         shader_nodetree.nodes["Mix Shader.001"].inputs[2]
+    )
+    # mix_shader_007.Shader -> material_output_001.Surface
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix Shader.007"].outputs[0],
+        shader_nodetree.nodes["Material Output.001"].inputs[0]
+    )
+    # math_005.Value -> mix.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.005"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[0]
+    )
+    # math_003.Value -> group.Blend
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.003"].outputs[0],
+        shader_nodetree.nodes["Group"].inputs[0]
+    )
+    # attribute_002.Factor -> math_010.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[2],
+        shader_nodetree.nodes["Math.010"].inputs[0]
+    )
+    # group_002.Value -> math_002.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Group.002"].outputs[0],
+        shader_nodetree.nodes["Math.002"].inputs[0]
+    )
+    # math_010.Value -> mix_001.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.010"].outputs[0],
+        shader_nodetree.nodes["Mix.001"].inputs[0]
+    )
+    # mix_001.Result -> math_003.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.001"].outputs[0],
+        shader_nodetree.nodes["Math.003"].inputs[0]
+    )
+    # mix_001.Result -> math_006.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix.001"].outputs[0],
+        shader_nodetree.nodes["Math.006"].inputs[1]
+    )
+    # math_002.Value -> mix_001.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.002"].outputs[0],
+        shader_nodetree.nodes["Mix.001"].inputs[2]
+    )
+    # group_003.Value -> mix_001.B
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Group.003"].outputs[0],
+        shader_nodetree.nodes["Mix.001"].inputs[3]
+    )
+    # math_009.Value -> mix_shader_007.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.009"].outputs[0],
+        shader_nodetree.nodes["Mix Shader.007"].inputs[0]
     )
 
     return shader_nodetree
@@ -5223,3 +7922,358 @@ def setup_sky_nodes(shader_nodetree, rt, bk, lf, ft, up, dn):
         shader_nodetree.nodes["Vector Math.011"].outputs[0],
         shader_nodetree.nodes["Image Texture.020"].inputs[0]
     )
+
+def setup_sprite_light_nodes(shader_nodetree):
+    # Start with a clean node tree
+    for node in shader_nodetree.nodes:
+        shader_nodetree.nodes.remove(node)
+    shader_nodetree.color_tag = 'NONE'
+    shader_nodetree.description = ""
+    shader_nodetree.default_group_node_width = 140
+    # Initialize shader_nodetree nodes
+
+    # Node Emission
+    emission = shader_nodetree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+
+    # Node Light Output
+    light_output = shader_nodetree.nodes.new("ShaderNodeOutputLight")
+    light_output.name = "Light Output"
+    light_output.is_active_output = True
+    light_output.target = 'ALL'
+
+    # Node Attribute
+    attribute = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute.name = "Attribute"
+    attribute.attribute_name = "light_color"
+    attribute.attribute_type = 'INSTANCER'
+    attribute.outputs[1].hide = True
+    attribute.outputs[2].hide = True
+    attribute.outputs[3].hide = True
+
+    # Node Attribute.001
+    attribute_001 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_001.name = "Attribute.001"
+    attribute_001.attribute_name = "size"
+    attribute_001.attribute_type = 'INSTANCER'
+    attribute_001.outputs[0].hide = True
+    attribute_001.outputs[1].hide = True
+    attribute_001.outputs[3].hide = True
+
+    # Node Attribute.002
+    attribute_002 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_002.name = "Attribute.002"
+    attribute_002.attribute_name = "scale"
+    attribute_002.attribute_type = 'INSTANCER'
+    attribute_002.outputs[0].hide = True
+    attribute_002.outputs[2].hide = True
+    attribute_002.outputs[3].hide = True
+
+    # Node Separate XYZ
+    separate_xyz = shader_nodetree.nodes.new("ShaderNodeSeparateXYZ")
+    separate_xyz.name = "Separate XYZ"
+    separate_xyz.outputs[1].hide = True
+    separate_xyz.outputs[2].hide = True
+
+    # Node Math
+    math = shader_nodetree.nodes.new("ShaderNodeMath")
+    math.name = "Math"
+    math.operation = 'MULTIPLY'
+    math.use_clamp = False
+
+    # Node Math.001
+    math_001 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_001.name = "Math.001"
+    math_001.operation = 'POWER'
+    math_001.use_clamp = False
+    # Value_001
+    math_001.inputs[1].default_value = 3.0
+
+    # Node Math.002
+    math_002 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_002.name = "Math.002"
+    math_002.operation = 'MULTIPLY'
+    math_002.use_clamp = False
+    # Value_001
+    math_002.inputs[1].default_value = 700.0
+
+    # Node Group.002
+    group_002 = shader_nodetree.nodes.new("ShaderNodeGroup")
+    group_002.name = "Group.002"
+    group_002.node_tree = ensure_group("FxBlend")
+
+    # Node Math.003
+    math_003 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_003.name = "Math.003"
+    math_003.operation = 'DIVIDE'
+    math_003.use_clamp = False
+    # Value_001
+    math_003.inputs[1].default_value = 255.0
+
+    # Node Attribute.006
+    attribute_006 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_006.label = "renderamt"
+    attribute_006.name = "Attribute.006"
+    attribute_006.attribute_name = "renderamt"
+    attribute_006.attribute_type = 'INSTANCER'
+
+    # Node Math.004
+    math_004 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_004.name = "Math.004"
+    math_004.operation = 'DIVIDE'
+    math_004.use_clamp = False
+    # Value_001
+    math_004.inputs[1].default_value = 255.0
+
+    # Node Math.005
+    math_005 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_005.name = "Math.005"
+    math_005.operation = 'MULTIPLY'
+    math_005.use_clamp = False
+
+    # Node Math.006
+    math_006 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_006.name = "Math.006"
+    math_006.operation = 'MULTIPLY'
+    math_006.use_clamp = False
+
+    # Node Math.007
+    math_007 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_007.name = "Math.007"
+    math_007.operation = 'COMPARE'
+    math_007.use_clamp = False
+    # Value_001
+    math_007.inputs[1].default_value = 3.0
+    # Value_002
+    math_007.inputs[2].default_value = 0.0
+
+    # Node Attribute.007
+    attribute_007 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_007.label = "rendermode"
+    attribute_007.name = "Attribute.007"
+    attribute_007.attribute_name = "rendermode"
+    attribute_007.attribute_type = 'INSTANCER'
+
+    # Node Mix
+    mix = shader_nodetree.nodes.new("ShaderNodeMix")
+    mix.name = "Mix"
+    mix.blend_type = 'MULTIPLY'
+    mix.clamp_factor = False
+    mix.clamp_result = False
+    mix.data_type = 'RGBA'
+    mix.factor_mode = 'UNIFORM'
+    # B_Color
+    mix.inputs[7].default_value = (0.0, 0.0, 0.0, 1.0)
+
+    # Node Math.008
+    math_008 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_008.name = "Math.008"
+    math_008.operation = 'SUBTRACT'
+    math_008.use_clamp = False
+    # Value
+    math_008.inputs[0].default_value = 1.0
+
+    # Node Attribute.008
+    attribute_008 = shader_nodetree.nodes.new("ShaderNodeAttribute")
+    attribute_008.name = "Attribute.008"
+    attribute_008.attribute_name = "glow_light"
+    attribute_008.attribute_type = 'INSTANCER'
+
+    # Node Math.009
+    math_009 = shader_nodetree.nodes.new("ShaderNodeMath")
+    math_009.name = "Math.009"
+    math_009.operation = 'MULTIPLY'
+    math_009.use_clamp = False
+
+    # Set locations
+    shader_nodetree.nodes["Emission"].location = (40.0, 160.0)
+    shader_nodetree.nodes["Light Output"].location = (200.0, 160.0)
+    shader_nodetree.nodes["Attribute"].location = (-280.0, 160.0)
+    shader_nodetree.nodes["Attribute.001"].location = (-760.0, 40.0)
+    shader_nodetree.nodes["Attribute.002"].location = (-920.0, -80.0)
+    shader_nodetree.nodes["Separate XYZ"].location = (-760.0, -80.0)
+    shader_nodetree.nodes["Math"].location = (-600.0, 40.0)
+    shader_nodetree.nodes["Math.001"].location = (-440.0, 40.0)
+    shader_nodetree.nodes["Math.002"].location = (-280.0, 40.0)
+    shader_nodetree.nodes["Group.002"].location = (-600.0, -120.0)
+    shader_nodetree.nodes["Math.003"].location = (-440.0, -120.0)
+    shader_nodetree.nodes["Attribute.006"].location = (-600.0, -280.0)
+    shader_nodetree.nodes["Math.004"].location = (-440.0, -280.0)
+    shader_nodetree.nodes["Math.005"].location = (-280.0, -120.0)
+    shader_nodetree.nodes["Math.006"].location = (-120.0, 40.0)
+    shader_nodetree.nodes["Math.007"].location = (-600.0, 320.0)
+    shader_nodetree.nodes["Attribute.007"].location = (-760.0, 320.0)
+    shader_nodetree.nodes["Mix"].location = (-120.0, 280.0)
+    shader_nodetree.nodes["Math.008"].location = (-280.0, 320.0)
+    shader_nodetree.nodes["Attribute.008"].location = (-600.0, 500.0)
+    shader_nodetree.nodes["Math.009"].location = (-440.0, 320.0)
+
+    # Set dimensions
+    shader_nodetree.nodes["Emission"].width  = 140.0
+    shader_nodetree.nodes["Emission"].height = 100.0
+
+    shader_nodetree.nodes["Light Output"].width  = 140.0
+    shader_nodetree.nodes["Light Output"].height = 100.0
+
+    shader_nodetree.nodes["Attribute"].width  = 140.0
+    shader_nodetree.nodes["Attribute"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.001"].width  = 140.0
+    shader_nodetree.nodes["Attribute.001"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.002"].width  = 140.0
+    shader_nodetree.nodes["Attribute.002"].height = 100.0
+
+    shader_nodetree.nodes["Separate XYZ"].width  = 140.0
+    shader_nodetree.nodes["Separate XYZ"].height = 100.0
+
+    shader_nodetree.nodes["Math"].width  = 140.0
+    shader_nodetree.nodes["Math"].height = 100.0
+
+    shader_nodetree.nodes["Math.001"].width  = 140.0
+    shader_nodetree.nodes["Math.001"].height = 100.0
+
+    shader_nodetree.nodes["Math.002"].width  = 140.0
+    shader_nodetree.nodes["Math.002"].height = 100.0
+
+    shader_nodetree.nodes["Group.002"].width  = 140.0
+    shader_nodetree.nodes["Group.002"].height = 100.0
+
+    shader_nodetree.nodes["Math.003"].width  = 140.0
+    shader_nodetree.nodes["Math.003"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.006"].width  = 140.0
+    shader_nodetree.nodes["Attribute.006"].height = 100.0
+
+    shader_nodetree.nodes["Math.004"].width  = 140.0
+    shader_nodetree.nodes["Math.004"].height = 100.0
+
+    shader_nodetree.nodes["Math.005"].width  = 140.0
+    shader_nodetree.nodes["Math.005"].height = 100.0
+
+    shader_nodetree.nodes["Math.006"].width  = 140.0
+    shader_nodetree.nodes["Math.006"].height = 100.0
+
+    shader_nodetree.nodes["Math.007"].width  = 140.0
+    shader_nodetree.nodes["Math.007"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.007"].width  = 140.0
+    shader_nodetree.nodes["Attribute.007"].height = 100.0
+
+    shader_nodetree.nodes["Mix"].width  = 140.0
+    shader_nodetree.nodes["Mix"].height = 100.0
+
+    shader_nodetree.nodes["Math.008"].width  = 140.0
+    shader_nodetree.nodes["Math.008"].height = 100.0
+
+    shader_nodetree.nodes["Attribute.008"].width  = 140.0
+    shader_nodetree.nodes["Attribute.008"].height = 100.0
+
+    shader_nodetree.nodes["Math.009"].width  = 140.0
+    shader_nodetree.nodes["Math.009"].height = 100.0
+
+
+    # Initialize shader_nodetree links
+
+    # emission.Emission -> light_output.Surface
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Emission"].outputs[0],
+        shader_nodetree.nodes["Light Output"].inputs[0]
+    )
+    # mix.Result -> emission.Color
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Mix"].outputs[2],
+        shader_nodetree.nodes["Emission"].inputs[0]
+    )
+    # attribute_002.Vector -> separate_xyz.Vector
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.002"].outputs[1],
+        shader_nodetree.nodes["Separate XYZ"].inputs[0]
+    )
+    # attribute_001.Factor -> math.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.001"].outputs[2],
+        shader_nodetree.nodes["Math"].inputs[0]
+    )
+    # separate_xyz.X -> math.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Separate XYZ"].outputs[0],
+        shader_nodetree.nodes["Math"].inputs[1]
+    )
+    # math.Value -> math_001.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math"].outputs[0],
+        shader_nodetree.nodes["Math.001"].inputs[0]
+    )
+    # math_001.Value -> math_002.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.001"].outputs[0],
+        shader_nodetree.nodes["Math.002"].inputs[0]
+    )
+    # group_002.Value -> math_003.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Group.002"].outputs[0],
+        shader_nodetree.nodes["Math.003"].inputs[0]
+    )
+    # attribute_006.Factor -> math_004.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.006"].outputs[2],
+        shader_nodetree.nodes["Math.004"].inputs[0]
+    )
+    # math_003.Value -> math_005.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.003"].outputs[0],
+        shader_nodetree.nodes["Math.005"].inputs[0]
+    )
+    # math_004.Value -> math_005.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.004"].outputs[0],
+        shader_nodetree.nodes["Math.005"].inputs[1]
+    )
+    # math_002.Value -> math_006.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.002"].outputs[0],
+        shader_nodetree.nodes["Math.006"].inputs[0]
+    )
+    # math_005.Value -> math_006.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.005"].outputs[0],
+        shader_nodetree.nodes["Math.006"].inputs[1]
+    )
+    # math_006.Value -> emission.Strength
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.006"].outputs[0],
+        shader_nodetree.nodes["Emission"].inputs[1]
+    )
+    # attribute_007.Factor -> math_007.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.007"].outputs[2],
+        shader_nodetree.nodes["Math.007"].inputs[0]
+    )
+    # attribute.Color -> mix.A
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[6]
+    )
+    # attribute_008.Factor -> math_009.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Attribute.008"].outputs[2],
+        shader_nodetree.nodes["Math.009"].inputs[0]
+    )
+    # math_009.Value -> math_008.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.009"].outputs[0],
+        shader_nodetree.nodes["Math.008"].inputs[1]
+    )
+    # math_008.Value -> mix.Factor
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.008"].outputs[0],
+        shader_nodetree.nodes["Mix"].inputs[0]
+    )
+    # math_007.Value -> math_009.Value
+    shader_nodetree.links.new(
+        shader_nodetree.nodes["Math.007"].outputs[0],
+        shader_nodetree.nodes["Math.009"].inputs[1]
+    )
+
+    return shader_nodetree

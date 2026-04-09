@@ -163,7 +163,7 @@ class BspImporter(bpy.types.Operator):
 
     map: bpy.props.StringProperty(
         name="Map",
-        default="crossfire.bsp",
+        default="maps/crossfire.bsp",
     )
 
     scale: bpy.props.FloatProperty(
@@ -215,8 +215,7 @@ class BspImporter(bpy.types.Operator):
         fs.add_search_path(f"{fs.base_dir}", "BASE")
         fs.add_search_path(f"{fs.base_dir}/platform", "PLATFORM")
 
-        map = f"maps/{self.map}"
-        file = fs.open(map, "rb")
+        file = fs.open(self.map, "rb")
 
         if file is None:
             raise Exception(f"Couldn't open {map}")

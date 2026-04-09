@@ -88,17 +88,32 @@ class Spr:
         collection.objects.link(obj)
         no_depth_collection.objects.link(obj)
 
+        modifier: bpy.types.NodesModifier = obj.modifiers.new("GeometryNodes", "NODES")
+        node_group = gsr_nodes.ensure_group("Glow Sprite")
+        modifier.node_group = node_group
+
+        image = self.ensure_average_color_image(name + "_averages")
+        image_identifier = node_group.interface.items_tree["Image"].identifier
+        modifier[image_identifier] = image
+
+        frame_identifier = node_group.interface.items_tree["Frame"].identifier
+
+        frame_driver: bpy.types.Driver = modifier.driver_add(f'["{frame_identifier}"]').driver # type: ignore
+        frame_driver.type = "SCRIPTED"
+        frame_driver_var: bpy.types.DriverVariable = frame_driver.variables.new()
+        frame_driver_var.name = "frame"
+        frame_driver_var.type = "SINGLE_PROP"
+        frame_driver_var.targets[0].id = obj
+        frame_driver_var.targets[0].data_path = '["frame"]'
+        frame_driver.expression = "frame"
+
+        obj["glow_light"] = True
+
         obj["rendermode"] = 0
         obj.id_properties_ui("rendermode").update(
             min=0,
             max=5,
             step=1,
-        )
-
-        obj["r_blend"] = 0.0
-        obj.id_properties_ui("r_blend").update(
-            min=0.0,
-            max=1.0,
         )
 
         obj["rendercolor"] = [1.0, 1.0, 1.0]
@@ -209,6 +224,73 @@ class Spr:
                         pixels[i + 1] = tint.g / 255.0
                         pixels[i + 2] = tint.b / 255.0
                         pixels[i + 3] = idx / 255.0
+
+        image.pixels = pixels
+        image.pack()
+        return image
+
+    def ensure_average_color_image(self, name: str):
+        if name in bpy.data.images:
+            return bpy.data.images[name]
+        n = len(self.frames)
+        image: bpy.types.Image = bpy.data.images.new(name, width=n, height=1, alpha=True)
+        pixels = [0.0] * (n * 4)
+
+        if self.header.texture_format == SpriteTextureFormat.NORMAL or self.header.texture_format == SpriteTextureFormat.ADDITIVE:
+            for fi, frame in enumerate(self.frames):
+                r = g = b = total = 0.0
+                for y in range(frame.height):
+                    for x in range(frame.width):
+                        idx = frame.data[y * frame.width + x]
+                        color = self.palette[idx]
+                        weight = (color.r + color.g + color.b) / 3.0
+                        r += color.r * weight
+                        g += color.g * weight
+                        b += color.b * weight
+                        total += weight
+                count = total or 1.0
+                pixels[fi * 4]     = r / count / 255.0
+                pixels[fi * 4 + 1] = g / count / 255.0
+                pixels[fi * 4 + 2] = b / count / 255.0
+                pixels[fi * 4 + 3] = 1.0
+
+        elif self.header.texture_format == SpriteTextureFormat.ALPHTEST:
+            for fi, frame in enumerate(self.frames):
+                r = g = b = total = 0.0
+                for y in range(frame.height):
+                    for x in range(frame.width):
+                        idx = frame.data[y * frame.width + x]
+                        if idx == 255:
+                            continue
+                        color = self.palette[idx]
+                        weight = (color.r + color.g + color.b) / 3.0
+                        r += color.r * weight
+                        g += color.g * weight
+                        b += color.b * weight
+                        total += weight
+                count = total or 1.0
+                pixels[fi * 4]     = r / count / 255.0
+                pixels[fi * 4 + 1] = g / count / 255.0
+                pixels[fi * 4 + 2] = b / count / 255.0
+                pixels[fi * 4 + 3] = 1.0
+
+        else:
+            if self.header.texture_format != SpriteTextureFormat.INDEXALPHA:
+                print(f"Unknown sprite texture format {self.header.texture_format}! Defaulting to INDEXALPHA")
+            tint = self.palette[255]
+            tr = tint.r / 255.0
+            tg = tint.g / 255.0
+            tb = tint.b / 255.0
+            for fi, frame in enumerate(self.frames):
+                # color is constant (tint), only alpha varies — weight alpha by itself as a proxy for luminance
+                total_alpha = sum(frame.data[y * frame.width + x] / 255.0
+                                for y in range(frame.height)
+                                for x in range(frame.width))
+                avg_alpha = total_alpha / (frame.width * frame.height)
+                pixels[fi * 4]     = tr
+                pixels[fi * 4 + 1] = tg
+                pixels[fi * 4 + 2] = tb
+                pixels[fi * 4 + 3] = avg_alpha
 
         image.pixels = pixels
         image.pack()
