@@ -44,6 +44,10 @@ class GSR_OT_import_gsr(bpy.types.Operator):
         name="Scale",
         default=0.01,
     )
+    hide_viewentity_player: bpy.props.BoolProperty(
+        name="Hide viewentity player",
+        default=True,
+    )
     # separate_viewent_rays: bpy.props.BoolProperty(
     #     name="Separate viewent rays",
     #     description="Put viewent on a separate view layer so that its lighting is not affected by the playermodel and so that it does not affect the scene (shadows, etc)",
@@ -121,6 +125,7 @@ class GSR_OT_import_gsr(bpy.types.Operator):
         options = GsrOptions(
             scale=self.scale,
             # separate_viewent_rays=self.separate_viewent_rays,
+            hide_viewentity_player=self.hide_viewentity_player,
             viewent_camera_rays=self.viewent_camera_rays,
             viewent_shadow_rays=self.viewent_shadow_rays,
             viewent_diffuse_rays=self.viewent_diffuse_rays,
@@ -186,6 +191,7 @@ class GSR_PT_import_gsr(bpy.types.Panel):
         op = context.space_data.active_operator
         layout.prop(op, "map")
         layout.prop(op, "scale")
+        layout.prop(op, "hide_viewentity_player")
 
 
 class GSR_PT_import_viewent(bpy.types.Panel):

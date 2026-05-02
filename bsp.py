@@ -552,7 +552,7 @@ class Bsp:
                     v = -(pos.dot(t) + face_texinfo.t_shift) / texture.height
                     loop[uv_layer].uv = (u, v)
 
-                if not has_transparent_texture and texture.name[0] == "{":
+                if not has_transparent_texture and texture.name[0] == "{": # } tree-sitter indents...
                     has_transparent_texture = True
 
                 material_names = [m.name for m in mesh.materials]
@@ -586,17 +586,8 @@ class Bsp:
             return bpy.data.materials[texture.name]
 
         material: bpy.types.Material = bpy.data.materials.new(texture.name)
-        assert material.node_tree is not None
-        nodes: bpy.types.Nodes = material.node_tree.nodes
-        links: bpy.types.NodeLinks = material.node_tree.links
-
-        nodes.clear()
-
-        image_texture: bpy.types.ShaderNodeTexImage = nodes.new("ShaderNodeTexImage") # pyright: ignore[reportAssignmentType]
-        image_texture.extension = 'REPEAT'
-        image_texture.interpolation = 'Closest'
-        image_texture.projection = 'FLAT'
-        image_texture.location = (0.0, 0.0)
+        node_tree = material.node_tree
+        assert node_tree is not None
 
         # R_TextureAnimation
         if texture.anim_total > 0:
@@ -631,94 +622,39 @@ class Bsp:
             image.pixels = atlas_pixels # type: ignore
             image.pack()
 
-            animated_texture = gsr_nodes.new(nodes, "Animated Texture")
-            animated_texture.location = (-160.0, -140.0)
-            animated_texture.inputs[0].default_value = len(main_frames)
-            animated_texture.inputs[1].default_value = len(alt_frames)
-            links.new(animated_texture.outputs[0], image_texture.inputs[0])
-
-            # gsr_nodes.setup_anim_bsp_nodes(nodes, links, image, len(main_frames), len(alt_frames))
         else:
             image: bpy.types.Image = bpy.data.images.new(texture.name, texture.width, texture.height, alpha=True)
             image.pixels = texture.pixels # type: ignore
             image.pack()
 
-        image_texture.image = image
-
-        bsdf: bpy.types.ShaderNodeBsdfPrincipled = nodes.new("ShaderNodeBsdfPrincipled") # pyright: ignore[reportAssignmentType]
-        # Metallic
-        bsdf.inputs[1].default_value = 0.0
-        # Roughness
-        bsdf.inputs[2].default_value = 1.0
-        # IOR
-        bsdf.inputs[3].default_value = 1.0
-        links.new(image_texture.outputs[1], bsdf.inputs[4])
-
-        output: bpy.types.ShaderNodeOutputMaterial = nodes.new("ShaderNodeOutputMaterial") # pyright: ignore[reportAssignmentType]
-
-        # idk if transparent can emit
         if emissive is not None:
             strength, color = emissive
             if color is None:
                 self.file.seek(self.header.lumps[LUMP.LIGHTING].offset + face.lightmap_offset)
                 color = self.file.read(3)
-
             color = (srgb_to_linear(color[0] / 255.0), srgb_to_linear(color[1] / 255.0), srgb_to_linear(color[2] / 255.0), 1.0)
-            # gsr_nodes.setup_emissive_bsp_nodes(nodes, links, image, color, strength)
 
-            rgb: bpy.types.ShaderNodeRGB = nodes.new("ShaderNodeRGB") # pyright: ignore[reportAssignmentType]
-            rgb.outputs[0].default_value = color
-            rgb.location = (100.0, 160.0)
-
-            mix: bpy.types.ShaderNodeMix = nodes.new("ShaderNodeMix") # pyright: ignore[reportAssignmentType]
-            mix.name = "Mix"
-            mix.blend_type = 'MULTIPLY'
-            mix.clamp_factor = False
-            mix.clamp_result = False
-            mix.data_type = 'RGBA'
-            mix.factor_mode = 'UNIFORM'
-            mix.inputs[0].default_value = 1.0
-            mix.location = (260.0, 0.0)
-            links.new(rgb.outputs[0], mix.inputs[6])
-            links.new(image_texture.outputs[0], mix.inputs[7])
-            links.new(mix.outputs[2], bsdf.inputs[0])
-            links.new(mix.outputs[2], bsdf.inputs[27])
-
-            bsdf.inputs[28].default_value = 1.0
-            bsdf.location = (420.0, 0.0)
-
-            light_path: bpy.types.ShaderNodeLightPath = nodes.new("ShaderNodeLightPath") # pyright: ignore[reportAssignmentType]
-            for (name, socket) in light_path.outputs.items():
-                name: str; socket: bpy.types.NodeSocket
-                if name != "Is Camera Ray":
-                    socket.hide = True
-            light_path.location = (520.0, 180.0)
-
-            emission: bpy.types.ShaderNodeEmission = nodes.new("ShaderNodeEmission") # pyright: ignore[reportAssignmentType]
-            emission.inputs[1].default_value = strength
-            emission.location = (520.0, 120.0)
-            links.new(rgb.outputs[0], emission.inputs[0])
-
-            mix_shader: bpy.types.ShaderNodeMixShader = nodes.new("ShaderNodeMixShader") # pyright: ignore[reportAssignmentType]
-            mix_shader.location = (680.0, 120.0)
-            links.new(light_path.outputs[0], mix_shader.inputs[0])
-            links.new(emission.outputs[0], mix_shader.inputs[1])
-            links.new(bsdf.outputs[0], mix_shader.inputs[2])
-
-            output.location = (840.0, 0.0)
-            links.new(mix_shader.outputs[0], output.inputs[0])
+            gsr_nodes.setup_emissive_nodes(node_tree, image, color, strength)
         else:
-            bsdf.location = (260.0, 0.0)
-            links.new(image_texture.outputs[0], bsdf.inputs[0])
-            output.location = (520.0, 0.0)
-            links.new(bsdf.outputs[0], output.inputs[0])
+            gsr_nodes.setup_bsp_nodes(node_tree, image)
 
-        # FIXME: integrate with above
-        if texture.name[0] == "{":
-            nodes.clear()
-            gsr_nodes.setup_transparent_bsp_nodes(nodes, links, image)
-        # else:
-        #     gsr_nodes.setup_bsp_nodes(nodes, links, image)
+        if texture.anim_total > 0:
+            image_texture: Optional[bpy.types.ShaderNodeTexImage] = None
+            for node in node_tree.nodes:
+                node: bpy.types.Node
+                if node.bl_idname == "ShaderNodeTexImage":
+                    image_texture = node # type: ignore
+                    break
+
+            if image_texture is None:
+                raise Exception("Couldn't find image texture node for animated bsp material!")
+
+            animated_texture = gsr_nodes.new(node_tree.nodes, "Animated Texture")
+            animated_texture.location = (-160.0, -140.0)
+            # we're just going to assume the following are always bound
+            animated_texture.inputs[0].default_value = len(main_frames) # type: ignore
+            animated_texture.inputs[1].default_value = len(alt_frames) # type: ignore
+            node_tree.links.new(animated_texture.outputs[0], image_texture.inputs[0])
 
         return material
 

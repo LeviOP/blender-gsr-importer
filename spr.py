@@ -109,22 +109,6 @@ class Spr:
 
         obj["glow_light"] = True
 
-        obj["rendermode"] = 0
-        obj.id_properties_ui("rendermode").update(
-            min=0,
-            max=5,
-            step=1,
-        )
-
-        obj["rendercolor"] = [1.0, 1.0, 1.0]
-        obj.id_properties_ui("rendercolor").update(
-            subtype="COLOR",
-            min=0.0,
-            max=1.0,
-            soft_min=0.0,
-            soft_max=1.0
-        )
-
         obj["frame"] = 0
         obj.id_properties_ui("frame").update(
             min=0,
@@ -313,7 +297,7 @@ class Spr:
         return material
 
     def ensure_beam_material(self, name: str):
-        material_name = "beam_" + name
+        material_name = name + "_beam"
         if material_name in bpy.data.materials:
             return bpy.data.materials[material_name]
 
@@ -330,7 +314,7 @@ class Spr:
         return material
 
     def ensure_beamfollow_material(self, name: str):
-        material_name = "beamfollow_" + name
+        material_name = name + "_beamfollow"
         if material_name in bpy.data.materials:
             return bpy.data.materials[material_name]
 
@@ -346,6 +330,7 @@ class Spr:
 
         return material
 
+# Mod_LoadSpriteModel
 def _parse_spr(br: BinaryReader) -> Spr:
     header = Header(
         id = br.i32(),

@@ -18,12 +18,15 @@ class Mod(list['CachedModel']):
     # Mod_FindName
     # unlike on the engine where this is allocating and can fail,
     # we should always "find" a model or something has gone wrong
-    def find_name(self, name: str) -> 'CachedModel':
+    # &&& ABOVE STATEMENT IS NOT TRUE FOR SOME REASON
+    # Not sure why yet... but we're gonna do it anyway
+    def find_name(self, name: str) -> Optional['CachedModel']:
         for mod in self:
             if mod.name == name:
                 return mod
 
-        raise Exception(f"Couldn't find model with name \"{name}\"!")
+        return None
+        # raise Exception(f"Couldn't find model with name \"{name}\"!")
 
     # Mod_LoadModel
     @overload
@@ -72,6 +75,9 @@ class Mod(list['CachedModel']):
     def for_name(self, name: str, crash: Literal[False]) -> Optional['CachedModel']: ...
     def for_name(self, name: str, crash: bool) -> Optional['CachedModel']:
         mod = self.find_name(name)
+
+        if mod is None:
+            return None
 
         return self.load_model(mod, crash)
 

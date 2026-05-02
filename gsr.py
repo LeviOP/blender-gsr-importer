@@ -125,7 +125,7 @@ class GsrReader(BinaryReader):
             case ObjectField.Flags:
                 return (ObjectField.Flags, self.u32())
             case ObjectField.Delta:
-                return (ObjectField.Delta, (self.f32(), self.f32(), self.f32()))
+                return (ObjectField.Delta, Vector((self.f32(), self.f32(), self.f32())))
             case ObjectField.Freq:
                 return (ObjectField.Freq, self.f32())
             case ObjectField.Width:
@@ -420,30 +420,6 @@ class StudioModel:
 
                 visibility_driver.expression = "not (entity_draw and parent_active and body_part_active)"
 
-    def setup_armature(self, obj: bpy.types.Object, obj_action: ActionContext) -> tuple[dict[str, BoneFCurves], dict[str, Matrix]]:
-        bone_fcurves_map: dict[str, BoneFCurves] = {}
-        bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
-
-        armature_data: bpy.types.Armature = obj.data # type: ignore
-        for pose_bone in obj.pose.bones: # type: ignore
-            pose_bone: bpy.types.PoseBone
-            pose_bone.rotation_mode = "QUATERNION"
-            bone_name = pose_bone.name
-            bone_string = f"pose.bones[\"{bone_name}\"]"
-            bone_fcurves_map[bone_name] = BoneFCurves(
-                location=obj_action.fcurves(bone_string + ".location", 3),
-                rotation_quaternion=obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
-            )
-            data_bone: bpy.types.Bone = armature_data.bones[bone_name]
-            if pose_bone.parent:
-                parent_world = armature_data.bones[pose_bone.parent.name].matrix_local
-                local_rest = parent_world.inverted() @ data_bone.matrix_local
-            else:
-                local_rest = data_bone.matrix_local.copy()
-            bone_local_rest_matrix_inverse_map[bone_name] = local_rest.inverted()
-
-        return bone_fcurves_map, bone_local_rest_matrix_inverse_map
-
     def flush_fcurves(self):
         self.active_fcurve.flush()
         for body_part in self.body_parts.values():
@@ -460,11 +436,12 @@ class Entity:
     prev_scale: Optional[float] = None
 
     # CL_LinkPacketEntities, but only for new entities ?
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, mod: Mod):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, mod: Mod, options: GsrOptions):
         self.blender_scale = scale
         # for weaponmodel and submodels (player models)
         self.collection = collection
         self.mod = mod
+        self.options = options
 
         model_index: int = br.u32()
         # we crash here, unlike the engine with fs_lazy_precache 1, which repeatedly tries to open the file and errors
@@ -527,6 +504,22 @@ class Entity:
 
         self.object["renderamt"] = 0
         self.object["renderfx"] = 0
+        self.object["rendermode"] = 0
+        self.object.id_properties_ui("rendermode").update( # type: ignore
+            min=0,
+            max=5,
+            step=1,
+        )
+        self.object["rendercolor"] = [1.0, 1.0, 1.0]
+        self.object.id_properties_ui("rendercolor").update( # type: ignore
+            subtype="COLOR",
+            min=0.0,
+            max=1.0,
+            soft_min=0.0,
+            soft_max=1.0
+        )
+
+
         # if self.model.type == ModelType.SPRITE or self.model.type == ModelType.STUDIO:
             # FIXME: these don't all exist on studio models!
         self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
@@ -895,7 +888,7 @@ class Entity:
             model_obj.parent = self.object
 
             shadows_only = False
-            if self.player_index + 1 == cl.viewentity:
+            if self.options.hide_viewentity_player and self.player_index + 1 == cl.viewentity:
                 shadows_only = True
                 seen_materials: set[bpy.types.Material] = set()
                 for model_child in model_obj.children:
@@ -1585,12 +1578,11 @@ class FBEAM(IntFlag):
 class BeamParticle:
     org: Vector
     die: float
-    obj: bpy.types.Object
-    fcurves: dict[str, Any]
+    born: float
 
 class Beam:
     prev_source: Optional[Vector] = None
-    prev_delta: Optional[tuple[float, float, float]] = None
+    prev_delta: Optional[Vector] = None
     prev_color: Optional[tuple[float, float, float]] = None
     prev_width: Optional[float] = None
     prev_segments: Optional[int] = None
@@ -1602,8 +1594,9 @@ class Beam:
     prev_frame: Optional[float] = None
 
     # R_BeamSetup / specific R_BeamXXXX function
-    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, cl: Cl):
+    def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection: bpy.types.Collection, cl: Cl):
         self.blender_scale = scale
+        self.collection = collection
 
         self.type = BeamType(br.i32())
         model_index = br.u32()
@@ -1612,38 +1605,24 @@ class Beam:
             raise Exception("Couldn't find beam model!")
         self.model = model
 
-        # more should be shared here i think...
-        self.framecount = len(self.model.spr.frames)
-
-        match self.type:
-            case BeamType.TE_BEAMPOINTS:
-                self.setup_beampoints(collection)
-            case BeamType.TE_BEAMFOLLOW:
-                self.setup_beamfollow()
-            case _:
-                raise Exception(f"Unhandled beam type: {self.type.name}")
-
-        self.update(br, blender_frame)
-
-    def setup_beampoints(self, collection):
         mesh = bpy.data.meshes.new("Beam")
         mesh.from_pydata([], [], [])
         mesh.update()
 
-        self.object = bpy.data.objects.new("Beam", mesh)
-        collection.objects.link(self.object)
+        self.object: bpy.types.Object = bpy.data.objects.new("Beam", mesh)
+        self.collection.objects.link(self.object)
 
-        obj_action = ActionContext(self.object)
+        self.obj_action = ActionContext(self.object)
 
         self.obj_fcurves = {}
 
         self.object["draw"] = False
-        self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
+        self.obj_fcurves["draw"] = self.obj_action.fcurve('["draw"]')
         # hide by default
         self.obj_fcurves["draw"].insert(1, False)
 
         for path in ["hide_render", "hide_viewport"]:
-            visibility_driver = self.object.driver_add(path).driver
+            visibility_driver: bpy.types.Driver = self.object.driver_add(path).driver # type: ignore
             visibility_driver.type = "SCRIPTED"
 
             draw_driver_var = visibility_driver.variables.new()
@@ -1654,23 +1633,28 @@ class Beam:
 
             visibility_driver.expression = "not draw"
 
+
+        self.framecount = len(self.model.spr.frames)
+
         self.object["amplitude"] = 0.0
-        self.object.id_properties_ui("amplitude").update(
-            min=0.0,
-            max=1.0,
-        )
+        # self.object.id_properties_ui("amplitude").update(
+        #     min=0.0,
+        #     max=1.0,
+        # )
+        self.object["segments"] = 0
+        self.object["width"] = 0.0
         self.object["freq"] = 0.0
-        self.object.id_properties_ui("freq").update(
-            min=0.0,
-            max=1.0,
-        )
+        # self.object.id_properties_ui("freq").update(
+        #     min=0.0,
+        #     max=1.0,
+        # )
         self.object["speed"] = 1.0
-        self.object.id_properties_ui("speed").update(
-            min=0.0,
-            max=1.0,
-        )
+        # self.object.id_properties_ui("speed").update(
+        #     min=0.0,
+        #     max=1.0,
+        # )
         self.object["color"] = (1.0, 1.0, 1.0)
-        self.object.id_properties_ui("color").update(
+        self.object.id_properties_ui("color").update( # type: ignore
             subtype="COLOR",
             min=0.0,
             max=1.0,
@@ -1678,38 +1662,120 @@ class Beam:
             soft_max=1.0
         )
         self.object["brightness"] = 1.0
-        self.object.id_properties_ui("brightness").update(
-            min=0.0,
-            max=1.0,
-        )
+        # self.object.id_properties_ui("brightness").update(
+        #     min=0.0,
+        #     max=1.0,
+        # )
         # simplified (pre-calucated) from engine's BEAM.frame!
         self.object["frame"] = 0
-        self.object.id_properties_ui("frame").update(
+        self.object.id_properties_ui("frame").update( # type: ignore
             min=0,
-            max=self.framecount,
+            max=self.framecount - 1,
+        )
+        self.object["source"] = (0.0, 0.0, 0.0)
+        self.object.id_properties_ui("source").update( # type: ignore
+            subtype="XYZ",
+        )
+        self.object["delta"] = (0.0, 0.0, 0.0)
+        self.object.id_properties_ui("source").update( # type: ignore
+            subtype="XYZ",
         )
 
         self.object["flags"] = 0
 
-        for prop in ["amplitude", "freq", "speed", "brightness", "frame", "flags"]:
-            self.obj_fcurves[prop] = obj_action.fcurve(f'["{prop}"]')
+        for prop in ["amplitude", "segments", "width", "freq", "speed", "brightness", "frame", "flags"]:
+            self.obj_fcurves[prop] = self.obj_action.fcurve(f'["{prop}"]')
 
-        self.obj_fcurves["color"] = obj_action.fcurves('["color"]', 3)
+        self.obj_fcurves["color"] = self.obj_action.fcurves('["color"]', 3)
+        self.obj_fcurves["source"] = self.obj_action.fcurves('["source"]', 3)
+        self.obj_fcurves["delta"] = self.obj_action.fcurves('["delta"]', 3)
 
-        modifier = self.object.modifiers.new("GeometryNodes", "NODES")
-        modifier.node_group = gsr_nodes.ensure_group("Beam Segment")
+
+        match self.type:
+            case BeamType.TE_BEAMPOINTS:
+                self.setup_beampoints()
+            case BeamType.TE_BEAMFOLLOW:
+                self.setup_beamfollow()
+            case _:
+                raise Exception(f"Unhandled beam type: {self.type.name}")
+
+        self.update(br, blender_frame)
+
+    def setup_beampoints(self):
+        modifier: bpy.types.NodesModifier = self.object.modifiers.new("GeometryNodes", "NODES")
+        node_group = gsr_nodes.ensure_group("BeamSegs")
+        modifier.node_group = node_group
 
         material = self.model.spr.ensure_beam_material(self.model.name)
-        modifier["Socket_1"] = material
+        material_identifier = node_group.interface.items_tree["Material"].identifier
+        modifier[material_identifier] = material
 
-        # FIXME: "Socket_n" = horrible, horrible hack!
-        self.obj_fcurves["source"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_2"]', 3)
-        self.obj_fcurves["delta"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_3"]', 3)
-        self.obj_fcurves["width"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_4"]')
-        self.obj_fcurves["segments"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_5"]')
+        self.object.data.materials.append(material) # type: ignore
+
+        for prop in ["source", "delta", "segments", "width", "freq", "speed"]:
+            prop_identifier = node_group.interface.items_tree[prop].identifier
+
+            prop_value = modifier[prop_identifier]
+            if hasattr(prop_value, "__len__") and not isinstance(prop_value, str):
+                for i in range(len(prop_value)):
+                    prop_driver: bpy.types.Driver = modifier.driver_add(f'["{prop_identifier}"]', i).driver # type: ignore
+                    prop_driver.type = "SCRIPTED"
+
+                    prop_driver_var: bpy.types.DriverVariable = prop_driver.variables.new()
+                    prop_driver_var.name = f"{prop}_{i}"
+                    prop_driver_var.type = "SINGLE_PROP"
+                    prop_driver_var.targets[0].id = self.object
+                    prop_driver_var.targets[0].data_path = f'["{prop}"][{i}]'
+                    prop_driver.expression = prop_driver_var.name
+            else:
+                prop_driver: bpy.types.Driver = modifier.driver_add(f'["{prop_identifier}"]').driver # type: ignore
+                prop_driver.type = "SCRIPTED"
+
+                prop_driver_var: bpy.types.DriverVariable = prop_driver.variables.new()
+                prop_driver_var.name = prop
+                prop_driver_var.type = "SINGLE_PROP"
+                prop_driver_var.targets[0].id = self.object
+                prop_driver_var.targets[0].data_path = f'["{prop}"]'
+                prop_driver.expression = prop
 
     def setup_beamfollow(self):
         self.particles: list[BeamParticle] = []
+
+        modifier: bpy.types.NodesModifier = self.object.modifiers.new("GeometryNodes", "NODES")
+        node_group = gsr_nodes.ensure_group("BeamFollow")
+        modifier.node_group = node_group
+
+        material = self.model.spr.ensure_beamfollow_material(self.model.name)
+        material_identifier = node_group.interface.items_tree["Material"].identifier
+        modifier[material_identifier] = material
+
+        self.object.data.materials.append(material) # type: ignore
+
+        for prop in ["width", "amplitude", "source"]:
+            prop_identifier = node_group.interface.items_tree[prop].identifier
+
+            prop_value = modifier[prop_identifier]
+            if hasattr(prop_value, "__len__") and not isinstance(prop_value, str):
+                for i in range(len(prop_value)):
+                    prop_driver: bpy.types.Driver = modifier.driver_add(f'["{prop_identifier}"]', i).driver # type: ignore
+                    prop_driver.type = "SCRIPTED"
+
+                    prop_driver_var: bpy.types.DriverVariable = prop_driver.variables.new()
+                    prop_driver_var.name = f"{prop}_{i}"
+                    prop_driver_var.type = "SINGLE_PROP"
+                    prop_driver_var.targets[0].id = self.object
+                    prop_driver_var.targets[0].data_path = f'["{prop}"][{i}]'
+                    prop_driver.expression = prop_driver_var.name
+            else:
+                prop_driver: bpy.types.Driver = modifier.driver_add(f'["{prop_identifier}"]').driver # type: ignore
+                prop_driver.type = "SCRIPTED"
+
+                prop_driver_var: bpy.types.DriverVariable = prop_driver.variables.new()
+                prop_driver_var.name = prop
+                prop_driver_var.type = "SINGLE_PROP"
+                prop_driver_var.targets[0].id = self.object
+                prop_driver_var.targets[0].data_path = f'["{prop}"]'
+                prop_driver.expression = prop
 
     def update(self, br: GsrReader, blender_frame: int):
         fields = br.object_fields()
@@ -1718,11 +1784,7 @@ class Beam:
             match field:
                 case (ObjectField.Draw, draw):
                     self.draw = draw
-                    if self.type == BeamType.TE_BEAMPOINTS:
-                        self.obj_fcurves["draw"].insert(blender_frame, self.draw)
-                    elif self.type == BeamType.TE_BEAMFOLLOW:
-                        for particle in self.particles:
-                            particle.fcurves["draw"].insert(blender_frame, self.draw)
+                    self.obj_fcurves["draw"].insert(blender_frame, self.draw)
                 case (ObjectField.Flags, flags):
                     self.flags = FBEAM(flags)
                 case (ObjectField.Framerate, framerate):
@@ -1749,202 +1811,85 @@ class Beam:
                     self.brightness = brightness
 
     # R_BeamDraw
-    def beam_draw(self, blender_frame: int, time: float, collection):
+    def beam_draw(self, blender_frame: int, cl: Cl):
+        if self.prev_width != self.width:
+            self.obj_fcurves["width"].insert(blender_frame, self.width * self.blender_scale)
+            self.prev_width = self.width
+        if self.prev_segments != self.segments:
+            self.obj_fcurves["segments"].insert(blender_frame, self.segments)
+            self.prev_segments = self.segments
+
+        if self.prev_color != self.color:
+            self.obj_fcurves["color"].insert(blender_frame, self.color)
+            self.prev_color = self.color
+
+        if self.prev_amplitude != self.amplitude:
+            self.obj_fcurves["amplitude"].insert(blender_frame, self.amplitude)
+            self.prev_amplitude = self.amplitude
+        if self.prev_freq != self.freq:
+            self.obj_fcurves["freq"].insert(blender_frame, self.freq)
+            self.prev_freq = self.freq
+        if self.prev_speed != self.speed:
+            self.obj_fcurves["speed"].insert(blender_frame, self.speed)
+            self.prev_speed = self.speed
+        if self.prev_brightness != self.brightness:
+            self.obj_fcurves["brightness"].insert(blender_frame, self.brightness)
+            self.prev_brightness = self.brightness
+        if self.prev_flags != self.flags:
+            self.obj_fcurves["flags"].insert(blender_frame, int(self.flags))
+            self.prev_flags = self.flags
+
+        frame = int(self.framerate * cl.time + self.frame) % self.framecount
+        if self.prev_frame != frame:
+            self.obj_fcurves["frame"].insert(blender_frame, frame)
+            self.prev_frame = frame
+
+        if self.prev_source != self.source:
+            source = self.source * self.blender_scale
+            self.obj_fcurves["source"].insert(blender_frame, source)
+            self.prev_source = self.source.copy()
+
+        if self.prev_delta != self.delta:
+            delta = self.delta * self.blender_scale
+            self.obj_fcurves["delta"].insert(blender_frame, delta)
+            self.prev_delta = self.delta.copy()
+
         match self.type:
             case BeamType.TE_BEAMPOINTS:
-                self.draw_segs(blender_frame, time)
+                # handled entirely by geometry nodes
+                pass
+                # self.draw_segs(blender_frame)
             case BeamType.TE_BEAMFOLLOW:
-                self.draw_beam_follow(blender_frame, time, collection)
+                self.draw_beam_follow(cl)
             case _:
                 print(f"unhandled beam type! {self.type.name} ({self.type.value})")
 
     # R_DrawSegs
-    def draw_segs(self, blender_frame: int, time: float):
-        if self.prev_source is None or self.prev_source != self.source:
-            source = self.source * self.blender_scale
-            self.obj_fcurves["source"].insert(blender_frame, source)
-            self.prev_source = self.source
-
-        if self.prev_delta is None or self.prev_delta != self.delta:
-            delta = Vector(self.delta) * self.blender_scale
-            self.obj_fcurves["delta"].insert(blender_frame, delta)
-            self.prev_delta = self.delta
-
-        if self.prev_width is None or self.prev_width != self.width:
-            self.obj_fcurves["width"].insert(blender_frame, self.width * self.blender_scale)
-            self.prev_width = self.width
-        if self.prev_segments is None or self.prev_segments != self.segments:
-            self.obj_fcurves["segments"].insert(blender_frame, self.segments)
-            self.prev_segments = self.segments
-
-        if self.prev_color is None or self.prev_color != self.color:
-            self.obj_fcurves["color"].insert(blender_frame, self.color)
-            self.prev_color = self.color
-
-        if self.prev_amplitude is None or self.prev_amplitude != self.amplitude:
-            self.obj_fcurves["amplitude"].insert(blender_frame, self.amplitude)
-            self.prev_amplitude = self.amplitude
-        if self.prev_freq is None or self.prev_freq != self.freq:
-            self.obj_fcurves["freq"].insert(blender_frame, self.freq)
-            self.prev_freq = self.freq
-        if self.prev_speed is None or self.prev_speed != self.speed:
-            self.obj_fcurves["speed"].insert(blender_frame, self.speed)
-            self.prev_speed = self.speed
-        if self.prev_brightness is None or self.prev_brightness != self.brightness:
-            self.obj_fcurves["brightness"].insert(blender_frame, self.brightness)
-            self.prev_brightness = self.brightness
-        if self.prev_flags is None or self.prev_flags != self.flags:
-            self.obj_fcurves["flags"].insert(blender_frame, int(self.flags))
-            self.prev_flags = self.flags
-
-        frame = int(self.framerate * time + self.frame) % self.framecount
-        if self.prev_frame is None or self.prev_frame != frame:
-            self.obj_fcurves["frame"].insert(blender_frame, frame)
-            self.prev_frame = frame
+    # def draw_segs(self, blender_frame: int):
+    #     pass
 
     # R_DrawBeamFollow
-    def draw_beam_follow(self, blender_frame: int, time: float, collection):
+    def draw_beam_follow(self, cl: Cl):
         if self.flags & FBEAM.STARTENTITY:
             last_org = self.particles[0].org if self.particles else None
             if last_org is None or (self.source - last_org).length >= 32:
-                material = self.model.spr.ensure_beamfollow_material(self.model.name)
-                obj, fcurves = self._create_beam_particle_object(collection, material)
-                particle = BeamParticle(
-                    org=self.source,
-                    die=time + self.amplitude,
-                    obj=obj,
-                    fcurves=fcurves,
-                )
-                self.particles.insert(0, particle)
+                self.particles.insert(0, BeamParticle(
+                    org=self.source.copy(),
+                    die=cl.time + self.amplitude,
+                    born=cl.time,
+                ))
 
-        for particle in self.particles:
-            if particle.die < time:
-                particle.fcurves["draw"].insert(blender_frame, False)
-
-        active = [p for p in self.particles if p.die >= time]
-
-        if len(active) < 2:
-            return
-
-        frame = int(self.framerate * time + self.frame) % self.framecount
-
-        # FIXME: only update if they're different! and if they're not drawn don't update!!!!!!!!!!
-        for i in range(len(active) - 1):
-            current = active[i]
-            next_p = active[i + 1]
-
-            source = (self.source if i == 0 else current.org) * self.blender_scale
-            raw_delta = next_p.org - (self.source if i == 0 else current.org)
-            delta = raw_delta * self.blender_scale
-            brightness_start = max(0.0, (current.die - time) / self.amplitude)
-            brightness_end = 0.0 if next_p is active[-1] else max(0.0, (next_p.die - time) / self.amplitude)
-
-            fcurves = current.fcurves
-            fcurves["draw"].insert(blender_frame, True)
-            fcurves["source"].insert(blender_frame, source)
-            fcurves["delta"].insert(blender_frame, delta)
-            fcurves["color"].insert(blender_frame, self.color)
-            fcurves["width"].insert(blender_frame, self.width * self.blender_scale)
-            fcurves["brightness_start"].insert(blender_frame, brightness_start)
-            fcurves["brightness_end"].insert(blender_frame, brightness_end)
-            fcurves["frame"].insert(blender_frame, frame)
-
-
-    def _create_beam_particle_object(self, collection, material) -> tuple[bpy.types.Object, dict]:
-        mesh = bpy.data.meshes.new("BeamSegment")
-        mesh.from_pydata([], [], [])
+    def create_beamfollow_mesh(self):
+        mesh: bpy.types.Mesh = self.object.data # type: ignore
+        mesh.from_pydata([particle.org * self.blender_scale for particle in self.particles], [], [])
         mesh.update()
 
-        obj = bpy.data.objects.new("BeamSegment", mesh)
-        collection.objects.link(obj)
+        die_attr: bpy.types.FloatAttribute = mesh.attributes.new("die", "FLOAT", "POINT")
+        born_attr: bpy.types.FloatAttribute = mesh.attributes.new("born", "FLOAT", "POINT")
+        for i, particle in enumerate(self.particles):
+            die_attr.data[i].value = particle.die
+            born_attr.data[i].value = particle.born
 
-        obj_action = ActionContext(obj)
-
-        obj["brightness_start"] = 1.0
-        obj.id_properties_ui("brightness_start").update(min=0.0, max=1.0)
-        obj["brightness_end"] = 1.0
-        obj.id_properties_ui("brightness_end").update(min=0.0, max=1.0)
-        obj["color"] = (1.0, 1.0, 1.0)
-        obj.id_properties_ui("color").update(subtype="COLOR", min=0.0, max=1.0, soft_min=0.0, soft_max=1.0)
-        obj["frame"] = 0
-        obj.id_properties_ui("frame").update(min=0, max=self.framecount)
-
-        fcurves = {}
-
-        obj["draw"] = False
-        fcurves["draw"] = obj_action.fcurve('["draw"]')
-        # hide by default
-        fcurves["draw"].insert(1, False)
-
-        for path in ["hide_render", "hide_viewport"]:
-            visibility_driver = obj.driver_add(path).driver
-            visibility_driver.type = "SCRIPTED"
-
-            draw_driver_var = visibility_driver.variables.new()
-            draw_driver_var.name = "draw"
-            draw_driver_var.type = "SINGLE_PROP"
-            draw_driver_var.targets[0].id = obj
-            draw_driver_var.targets[0].data_path = '["draw"]'
-
-            visibility_driver.expression = "not draw"
-
-        fcurves["brightness_start"] = obj_action.fcurve('["brightness_start"]')
-        fcurves["brightness_end"] = obj_action.fcurve('["brightness_end"]')
-        fcurves["color"] = obj_action.fcurves('["color"]', 3)
-        fcurves["frame"] = obj_action.fcurve('["frame"]')
-
-        modifier = obj.modifiers.new("GeometryNodes", "NODES")
-        modifier.node_group = gsr_nodes.ensure_group("Beam Segment")
-        modifier["Socket_1"] = material
-        # FIXME: two segements means there will be a beam of any lenght, which is what we want I think?
-        modifier["Socket_5"] = 2
-
-        fcurves["source"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_2"]', 3)
-        fcurves["delta"] = obj_action.fcurves(f'modifiers["{modifier.name}"]["Socket_3"]', 3)
-        fcurves["width"] = obj_action.fcurve(f'modifiers["{modifier.name}"]["Socket_4"]')
-
-        return obj, fcurves
-
-# CL_FxBlend
-# def cl_fx_blend(cl: Cl, entity: Entity, entity_index: int) -> int:
-#     offset = entity_index * 363.0
-#
-#     match entity.renderfx:
-#         case RenderFx.PulseSlow:
-#             blend = int(entity.renderamt + 0x10 * math.sin(cl.time * 2 + offset))
-#         case RenderFx.PulseFast:
-#             blend = int(entity.renderamt + 0x10 * math.sin(cl.time * 8 + offset))
-#         case RenderFx.PulseSlowWide:
-#             blend = int(entity.renderamt + 0x40 * math.sin(cl.time * 2 + offset))
-#         case RenderFx.PulseFastWide:
-#             blend = int(entity.renderamt + 0x40 * math.sin(cl.time * 8 + offset))
-#         case RenderFx.StrobeSlow:
-#             blend = int(20 * math.sin(cl.time * 4 + offset))
-#             blend = 0 if blend < 0 else entity.renderamt
-#         case RenderFx.StrobeFast:
-#             blend = int(20 * math.sin(cl.time * 16 + offset))
-#             blend = 0 if blend < 0 else entity.renderamt
-#         case RenderFx.StrobeFaster:
-#             blend = int(20 * math.sin(cl.time * 36 + offset))
-#             blend = 0 if blend < 0 else entity.renderamt
-#         case RenderFx.FlickerSlow:
-#             blend = int(20 * (math.sin(cl.time * 2) + math.sin(cl.time * 17 + offset)))
-#             blend = 0 if blend < 0 else entity.renderamt
-#         case RenderFx.FlickerFast:
-#             blend = int(20 * (math.sin(cl.time * 16) + math.sin(cl.time * 23 + offset)))
-#             blend = 0 if blend < 0 else entity.renderamt
-#         case RenderFx.Hologram:
-#             # TODO: distance fade needs camera distance
-#             blend = entity.renderamt
-#         case _:
-#             blend = entity.renderamt
-#
-#     # FadeSlow, FadeFast, SolidSlow, SolidFast mutate renderamt over time
-#     # in the engine
-#
-#     blend = max(0, min(255, blend))
-#
-#     return blend
 
 @dataclass
 class Decal:
@@ -1988,6 +1933,7 @@ class Cl:
 @dataclass
 class GsrOptions:
     scale: float
+    hide_viewentity_player: bool
     # separate_viewent_rays: bool
     viewent_camera_rays: bool
     viewent_shadow_rays: bool
@@ -2226,8 +2172,8 @@ class Gsr:
                     elif entity.model.type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
                     elif entity.model.type == ModelType.SPRITE:
-                        if entity.body:
-                            print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
+                        # if entity.body:
+                        #     print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
                 # R_DrawTEntitiesOnList
                 else:
@@ -2237,8 +2183,8 @@ class Gsr:
                     if entity.model.type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
                     elif entity.model.type == ModelType.SPRITE:
-                        if entity.body:
-                            print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
+                        # if entity.body:
+                        #     print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
 
             # R_DrawParticles
@@ -2247,7 +2193,7 @@ class Gsr:
                 if not beam.draw:
                     continue
 
-                beam.beam_draw(self.frame, self.cl.time, self.collection)
+                beam.beam_draw(self.frame, self.cl)
 
             # R_DrawViewModel
             if self.viewent is not None and self.viewent.draw:
@@ -2266,7 +2212,7 @@ class Gsr:
             wm.progress_update(self.br.tell())
 
         # I don't really want or need this in a separate function but pyright forces me to :)
-        self.flush_keyframes()
+        self.flush_keyframes(self.frame - 1)
 
         scene.frame_current = 1
         scene.frame_end = self.frame - 1
@@ -2351,7 +2297,7 @@ class Gsr:
                 transparent_bsdf_node.location = x, y + 100
                 links.new(transparent_bsdf_node.outputs[0], output_node.inputs[0])
 
-    def flush_keyframes(self):
+    def flush_keyframes(self, total_frames: int):
         for lightstyle in self.lightstyle_id_map.values():
             for (fcurve, _) in lightstyle:
                 fcurve.flush()
@@ -2377,13 +2323,17 @@ class Gsr:
                     weapon_studio_model.flush_fcurves()
 
         for beam in self.beams.values():
+            for fcurve in beam.obj_fcurves.values():
+                fcurve.flush()
             if beam.type == BeamType.TE_BEAMPOINTS:
-                for fcurve in beam.obj_fcurves.values():
-                    fcurve.flush()
+                pass
+                # for fcurve in beam.obj_fcurves.values():
+                #     fcurve.flush()
             elif beam.type == BeamType.TE_BEAMFOLLOW:
-                for particle in beam.particles:
-                    for fcurve in particle.fcurves.values():
-                        fcurve.flush()
+                beam.create_beamfollow_mesh()
+                # for particle in beam.particles:
+                #     for fcurve in particle.fcurves.values():
+                #         fcurve.flush()
 
         if self.viewent is not None:
             for fcurve in self.viewent.obj_fcurves.values():
@@ -2419,7 +2369,7 @@ class Gsr:
                     self.camera = Camera(self.br, self.frame, self.options.scale)
             case ObjectType.Entity:
                 id = self.br.u32()
-                self.entities[id] = Entity(self.br, self.frame, self.options.scale, self.collection, self.no_depth_collection, self.mod)
+                self.entities[id] = Entity(self.br, self.frame, self.options.scale, self.collection, self.no_depth_collection, self.mod, self.options)
             case ObjectType.Beam:
                 id = self.br.u32()
                 self.beams[id] = Beam(self.br, self.frame, self.options.scale, self.collection, self.cl)
