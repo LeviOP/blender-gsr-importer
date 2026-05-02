@@ -1,7 +1,7 @@
 from typing import Optional
 import bpy
 
-from .filesystem import FileSystem
+from .filesystem import FileSystem, FileSystemOptions
 from .bsp import Bsp
 
 class GSR_OT_import_bsp(bpy.types.Operator):
@@ -9,14 +9,19 @@ class GSR_OT_import_bsp(bpy.types.Operator):
     bl_label = "GoldSrc Map (.bsp)"
 
     base: bpy.props.StringProperty(
-        name="Base game directory",
+        name="Base engine directory",
         subtype="DIR_PATH",
         default="/home/levi/Desktop/hl"
     )
 
-    mod: bpy.props.StringProperty(
-        name="Mod name",
+    base_dir: bpy.props.StringProperty(
+        name="Base game directory",
         default="valve",
+    )
+
+    game: bpy.props.StringProperty(
+        name="Game",
+        default="valve"
     )
 
     addons_folder: bpy.props.BoolProperty(
@@ -39,11 +44,6 @@ class GSR_OT_import_bsp(bpy.types.Operator):
         default=False,
     )
 
-    # map: bpy.props.EnumProperty(
-    #     name="map",
-    #     items=map_items,
-    # )
-
     map: bpy.props.StringProperty(
         name="Map",
         default="maps/crossfire.bsp",
@@ -61,8 +61,8 @@ class GSR_OT_import_bsp(bpy.types.Operator):
         layout = self.layout
         assert layout is not None
         layout.prop(self, "base")
-        layout.prop(self, "mod")
-        layout.prop(self, "addons_folder")
+        layout.prop(self, "base_dir")
+        layout.prop(self, "game")
         layout.prop(self, "low_violence")
         layout.prop(self, "language")
         layout.prop(self, "hdmodels")
@@ -70,35 +70,20 @@ class GSR_OT_import_bsp(bpy.types.Operator):
         layout.prop(self, "scale")
 
     def execute(self, context):
-        base = self.base
-        if base.endswith("\\") or base.endswith("/"):
-            base = base[:-1]
+        # mimicking UTIL_GetBaseDir
+        engine_base = self.base
+        if engine_base.endswith("\\") or engine_base.endswith("/"):
+            engine_base = engine_base[:-1]
 
-        fs = FileSystem(base)
-        # immediately undone by RemoveAllSearchPaths call in FileSystem_SetGameDirectory
-        # fs.add_search_path(self.base, "ROOT")
-
-        if self.low_violence:
-            fs.add_search_path(f"{fs.base_dir}/{self.mod}_lv", "GAME")
-
-        if self.addons_folder:
-            fs.add_search_path(f"{fs.base_dir}/{self.mod}_addon", "GAME")
-
-        if self.language != "english":
-            fs.add_search_path(f"{fs.base_dir}/{self.mod}_{self.language}", "GAME")
-            # maybe support "localization" dir
-
-        if self.hdmodels:
-            fs.add_search_path(f"{fs.base_dir}/{self.mod}_hd", "GAME")
-
-        fs.add_search_path(f"{fs.base_dir}/{self.mod}", "GAME")
-        fs.add_search_path(f"{fs.base_dir}/{self.mod}", "GAMECONFIG")
-        fs.add_search_path(f"{fs.base_dir}/{self.mod}_downloads", "GAMEDOWNLOADS")
-
-        fs.add_search_path(f"{fs.base_dir}", "BASE")
-        # FIXME: don't hardcode "default dir" (-basedir)
-        fs.add_search_path(f"{fs.base_dir}/valve", "DEFAULTGAME")
-        fs.add_search_path(f"{fs.base_dir}/platform", "PLATFORM")
+        fs_options = FileSystemOptions(
+            base_dir=self.base_dir,
+            game=self.game,
+            language=self.language,
+            low_violence=self.low_violence,
+            addons_folder=self.addons_folder,
+            hdmodels=self.hdmodels,
+        )
+        fs = FileSystem(engine_base, fs_options)
 
         file = fs.open(self.map, "rb")
 
@@ -135,17 +120,14 @@ class GSR_OT_import_bsp(bpy.types.Operator):
 def menu_func_import(self, context):
     self.layout.operator(GSR_OT_import_bsp.bl_idname, text="GoldSrc Map (.bsp)")
 
-
 classes = (
     GSR_OT_import_bsp,
 )
-
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-
 
 def unregister():
     for cls in reversed(classes):

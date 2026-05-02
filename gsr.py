@@ -1934,7 +1934,6 @@ class Cl:
 class GsrOptions:
     scale: float
     hide_viewentity_player: bool
-    # separate_viewent_rays: bool
     viewent_camera_rays: bool
     viewent_shadow_rays: bool
     viewent_diffuse_rays: bool

@@ -31,12 +31,77 @@ def find_file_in_dir_case_insensitive(file: str) -> Optional[str]:
 
     return file.lower()
 
+@dataclass
+class FileSystemOptions:
+    base_dir: str
+    game: str
+    language: str
+    low_violence: bool
+    addons_folder: bool
+    hdmodels: bool
+
+
 class FileSystem:
-    def __init__(self, base_dir):
+    # FileSystem_Init
+    def __init__(self, base_dir: str, options: FileSystemOptions):
         self.base_dir = base_dir
+        self.options = options
         self.search_paths: list[SearchPath] = []
         self.opened_files: list[IO] = []
 
+        self.setup_directories()
+
+    # COM_SetupDirectories
+    def setup_directories(self):
+        base_dir = self.options.base_dir
+        game_dir = self.options.game
+        if not base_dir.strip():
+            base_dir = "valve"
+        if not game_dir.strip():
+            game_dir = base_dir
+        self.set_game_directory(base_dir, game_dir)
+        pass
+
+    # FileSystem_SetGameDirectory
+    def set_game_directory(self, default_dir: str, game_dir: str):
+        self.remove_all_serach_paths()
+
+        b_language = self.options.language != "" and self.options.language != "english"
+
+        if self.options.low_violence:
+            self.add_search_path(f"{self.base_dir}/{game_dir}_lv", "GAME")
+        if self.options.addons_folder:
+            self.add_search_path(f"{self.base_dir}/{game_dir}_addon", "GAME")
+        if b_language:
+            self.add_search_path(f"{self.base_dir}/{game_dir}_{self.options.language}", "GAME")
+        if self.options.hdmodels:
+            self.add_search_path(f"{self.base_dir}/{game_dir}_hd", "GAME")
+
+        self.add_search_path(f"{self.base_dir}/{game_dir}", "GAME")
+        self.add_search_path(f"{self.base_dir}/{game_dir}", "GAMECONFIG")
+        self.add_search_path(f"{self.base_dir}/{game_dir}_downloads", "GAMEDOWNLOADS")
+
+        if b_language:
+            if self.options.low_violence:
+                self.add_search_path(f"{self.base_dir}/{default_dir}_lv", "DEFAULTGAME")
+
+            if self.options.addons_folder:
+                self.add_search_path(f"{self.base_dir}/{default_dir}_addon", "DEFAULTGAME")
+
+            self.add_search_path(f"{self.base_dir}/{default_dir}_{self.options.language}", "DEFAULTGAME")
+
+            # TODO: -steam
+            # if self.options.steam:
+            #     ...
+
+        if self.options.hdmodels:
+            self.add_search_path(f"{self.base_dir}/{default_dir}_hd", "DEFAULTGAME")
+
+        self.add_search_path(f"{self.base_dir}", "BASE")
+        self.add_search_path(f"{self.base_dir}/{default_dir}", "DEFAULTGAME")
+        self.add_search_path(f"{self.base_dir}/platform", "PLATFORM")
+
+    # COM_FixSlashes
     @staticmethod
     def fix_slahes(string: str) -> str:
         return string.replace("/" if os.sep == "\\" else "\\", os.sep)
@@ -114,6 +179,7 @@ class FileSystem:
                     pass
         return None
 
+    # Trace_FOpen
     @overload
     def trace_fopen(self, file_name: str, options: Literal["rb", "wb", "ab", "r+b", "w+b"]) -> Optional[BinaryIO]: ...
     @overload
@@ -161,72 +227,6 @@ class FileSystem:
 
         return None
 
-    def get_local_path(self, relative_path: str) -> Optional[str]:
-        rel = Path(relative_path)
-        for search_path in self.search_paths:
-            cantidate = Path(search_path.path) / rel
-            if cantidate.exists():
-                return str(cantidate)
-        return None
-
     # RemoveAllSearchPaths
     def remove_all_serach_paths(self):
         self.search_paths.clear()
-
-    # FileSystem_SetGameDirectory
-    def set_game_directory(self, default_dir: str, game_dir: Optional[str]):
-        # TODO: complete this or don't...
-        self.remove_all_serach_paths()
-
-# def resolve_case_insensitive(base_dir: str, relative_path: str) -> Optional[str]:
-#     current = os.path.abspath(base_dir)
-#
-#     # Normalize and split into segments
-#     parts = [
-#         p for p in os.path.normpath(relative_path).split(os.sep)
-#         if p and p != "."
-#     ]
-#
-#     for part in parts:
-#         try:
-#             entries = os.listdir(current)
-#         except OSError:
-#             return None
-#
-#         match = None
-#         part_lower = part.lower()
-#
-#         for entry in entries:
-#             if entry.lower() == part_lower:
-#                 match = entry
-#                 break
-#
-#         if match is None:
-#             return None
-#
-#         current = os.path.join(current, match)
-#
-#     return current
-#
-# # CFileSystem::Open
-# # TODO: type is wrong. not always "rb" !
-# def open(file_name: str, options: str) -> Optional[BinaryIO]:
-#     if options != "rb":
-#         raise Exception("UNCOPMLETE LOL")
-#     path = find_path(file_name)
-#     if path is None:
-#         return None
-#     return builtins.open(path, options)
-#
-# # TODO: don't resolve_case_insensitive on windows
-# def find_path(path: str) -> Optional[str]:
-#     base = "/home/levi/.local/share/Steam/steamapps/common/Half-Life/"
-#     mod = "valve"
-#     for end in ["", "_downloads", "_addon"]:
-#         current = os.path.join(base, mod + end)
-#         result = resolve_case_insensitive(current, path)
-#         if result is not None:
-#             return result
-#
-#     return None
-#

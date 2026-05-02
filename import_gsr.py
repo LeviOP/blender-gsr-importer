@@ -1,7 +1,7 @@
 import bpy
 
 from .gsr import Gsr, GsrOptions
-from .filesystem import FileSystem
+from .filesystem import FileSystem, FileSystemOptions
 
 class GSR_OT_import_gsr(bpy.types.Operator):
     bl_idname = "gsr.import_gsr"
@@ -11,10 +11,18 @@ class GSR_OT_import_gsr(bpy.types.Operator):
     filter_glob: bpy.props.StringProperty(default="*.gsr", options={'HIDDEN'})
 
     base: bpy.props.StringProperty(
-        name="Base game directory",
+        name="Base engine directory",
         # can't have one inside.. this is fine.
         # subtype="DIR_PATH",
         default="/home/levi/Desktop/hl"
+    )
+    base_dir: bpy.props.StringProperty(
+        name="Base game directory",
+        default="valve",
+    )
+    game: bpy.props.StringProperty(
+        name="Game",
+        default="valve"
     )
     import_mod: bpy.props.StringProperty(
         name="Mod name",
@@ -48,11 +56,6 @@ class GSR_OT_import_gsr(bpy.types.Operator):
         name="Hide viewentity player",
         default=True,
     )
-    # separate_viewent_rays: bpy.props.BoolProperty(
-    #     name="Separate viewent rays",
-    #     description="Put viewent on a separate view layer so that its lighting is not affected by the playermodel and so that it does not affect the scene (shadows, etc)",
-    #     default=False,
-    # )
     viewent_camera_rays: bpy.props.BoolProperty(
         name="Camera rays",
         default=False,
@@ -100,31 +103,23 @@ class GSR_OT_import_gsr(bpy.types.Operator):
             self.report({'ERROR'}, f"Failed to open file: {e}")
             return {"CANCELLED"}
 
-        base = self.base
-        if base.endswith("\\") or base.endswith("/"):
-            base = base[:-1]
+        # mimicking UTIL_GetBaseDir
+        engine_base = self.base
+        if engine_base.endswith("\\") or engine_base.endswith("/"):
+            engine_base = engine_base[:-1]
 
-        fs = FileSystem(base)
-
-        if self.low_violence:
-            fs.add_search_path(f"{fs.base_dir}/{self.import_mod}_lv", "GAME")
-        if self.addons_folder:
-            fs.add_search_path(f"{fs.base_dir}/{self.import_mod}_addon", "GAME")
-        if self.language != "english":
-            fs.add_search_path(f"{fs.base_dir}/{self.import_mod}_{self.language}", "GAME")
-        if self.hdmodels:
-            fs.add_search_path(f"{fs.base_dir}/{self.import_mod}_hd", "GAME")
-
-        fs.add_search_path(f"{fs.base_dir}/{self.import_mod}", "GAME")
-        fs.add_search_path(f"{fs.base_dir}/{self.import_mod}", "GAMECONFIG")
-        fs.add_search_path(f"{fs.base_dir}/{self.import_mod}_downloads", "GAMEDOWNLOADS")
-        fs.add_search_path(f"{fs.base_dir}", "BASE")
-        fs.add_search_path(f"{fs.base_dir}/valve", "DEFAULTGAME")
-        fs.add_search_path(f"{fs.base_dir}/platform", "PLATFORM")
+        fs_options = FileSystemOptions(
+            base_dir=self.base_dir,
+            game=self.game,
+            language=self.language,
+            low_violence=self.low_violence,
+            addons_folder=self.addons_folder,
+            hdmodels=self.hdmodels,
+        )
+        fs = FileSystem(engine_base, fs_options)
 
         options = GsrOptions(
             scale=self.scale,
-            # separate_viewent_rays=self.separate_viewent_rays,
             hide_viewentity_player=self.hide_viewentity_player,
             viewent_camera_rays=self.viewent_camera_rays,
             viewent_shadow_rays=self.viewent_shadow_rays,
@@ -164,7 +159,8 @@ class GSR_PT_import_filesystem(bpy.types.Panel):
 
         op = context.space_data.active_operator
         layout.prop(op, "base")
-        layout.prop(op, "import_mod")
+        layout.prop(op, "base_dir")
+        layout.prop(op, "game")
         layout.prop(op, "addons_folder")
         layout.prop(op, "low_violence")
         layout.prop(op, "language")
@@ -206,10 +202,6 @@ class GSR_PT_import_viewent(bpy.types.Panel):
         op = context.space_data.active_operator
         return op is not None and op.bl_idname == "GSR_OT_import_gsr"
 
-    # def draw_header(self, context):
-    #     op = context.space_data.active_operator
-    #     self.layout.prop(op, "separate_viewent_rays", text="")
-
     def draw(self, context):
         layout = self.layout
         layout.use_property_split = True
@@ -217,8 +209,6 @@ class GSR_PT_import_viewent(bpy.types.Panel):
 
         op = context.space_data.active_operator
 
-        # col = layout.column()
-        # col.active = op.separate_viewent_rays
         col = layout
         col.prop(op, "viewent_camera_rays")
         col.prop(op, "viewent_shadow_rays")
@@ -233,7 +223,6 @@ class GSR_PT_import_viewent(bpy.types.Panel):
 def menu_func_import(self, context):
     self.layout.operator(GSR_OT_import_gsr.bl_idname, text="GoldSrc State Recording (.gsr)")
 
-
 classes = (
     GSR_OT_import_gsr,
     GSR_PT_import_filesystem,
@@ -241,12 +230,10 @@ classes = (
     GSR_PT_import_viewent,
 )
 
-
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-
 
 def unregister():
     for cls in reversed(classes):
