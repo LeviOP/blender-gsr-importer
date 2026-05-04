@@ -51,6 +51,10 @@ class FileSystem:
 
         self.setup_directories()
 
+    def __del__(self):
+        self.remove_all_serach_paths()
+        self.trace_dump_unclosed_files()
+
     # COM_SetupDirectories
     def setup_directories(self):
         base_dir = self.options.base_dir
@@ -101,7 +105,7 @@ class FileSystem:
         self.add_search_path(f"{self.base_dir}/{default_dir}", "DEFAULTGAME")
         self.add_search_path(f"{self.base_dir}/platform", "PLATFORM")
 
-    # COM_FixSlashes
+    # FixSlashes
     @staticmethod
     def fix_slahes(string: str) -> str:
         return string.replace("/" if os.sep == "\\" else "\\", os.sep)
@@ -202,7 +206,7 @@ class FileSystem:
     def find_file(self, search_path: SearchPath, file_name: str, options: str) -> Optional[IO]: ...
     def find_file(self, search_path: SearchPath, file_name: str, options: str):
         full_path = search_path.path + file_name
-        full_path = full_path.replace("/", os.sep).replace("\\", os.sep)
+        full_path = self.fix_slahes(full_path)
         return self.trace_fopen(full_path, options)
 
     # Open
@@ -227,6 +231,25 @@ class FileSystem:
 
         return None
 
+    # Trace_FClose
+    def trace_fclose(self, file: IO):
+        for i, f in enumerate(self.opened_files):
+            if f is file:
+                self.opened_files.pop(i)
+                break
+        else:
+            print("Tried to close unknown file pointer:", file)
+
+        file.close()
+
+    def close(self, file: IO):
+        self.trace_fclose(file);
+
     # RemoveAllSearchPaths
     def remove_all_serach_paths(self):
         self.search_paths.clear()
+
+    # Trace_DumpUnclosedFiles
+    def trace_dump_unclosed_files(self):
+        for file in self.opened_files:
+            print(f"File {file.name} was never closed")

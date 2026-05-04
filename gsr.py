@@ -15,7 +15,7 @@ from . import nodes as gsr_nodes
 from .binary_reader import BinaryReader
 from .filesystem import FileSystem
 from .import_bsp import Bsp
-from .model import CachedModel, Mod, ModelType
+from .model import Model, Mod, ModelType
 from .mdl import Blend, Sequence, SequenceFlags, SequenceMotionFlags
 from .spr import SpriteType
 from .wad import Wad
@@ -168,14 +168,14 @@ class GsrReader(BinaryReader):
             case PlayerField.BottomColor:
                 return (PlayerField.BottomColor, self.i32())
 
-def goldsrc_to_blender_angles(goldsrc_angles):
+def goldsrc_to_blender_angles(goldsrc_angles: Vector) -> Vector:
     pitch, yaw, roll = goldsrc_angles
 
     rx = math.radians(roll)
     ry = math.radians(-pitch)
     rz = math.radians(yaw)
 
-    return (rx, ry, rz)
+    return Vector((rx, ry, rz))
 
 def goldsrc_to_blender_angles_camera(goldsrc_angles):
     pitch, yaw, roll = goldsrc_angles
@@ -305,7 +305,7 @@ class RenderFx(IntEnum):
 @dataclass
 class PlayerModel:
     name: Optional[str] = None
-    model: Optional[CachedModel] = None
+    model: Optional[Model] = None
 
 LEGS_BONES = [
     "Bip01",
@@ -431,11 +431,11 @@ class StudioModel:
 class Entity:
     prev_origin: Optional[Vector] = None
     prev_angles: Optional[Vector] = None
-    prev_weaponmodel: Optional[CachedModel] = None
+    prev_weaponmodel: Optional[Model] = None
     prev_frame: Optional[float] = None
     prev_scale: Optional[float] = None
 
-    # CL_LinkPacketEntities, but only for new entities ?
+    # CL_LinkPacketEntities, but only for new entities ? also parts of CL_PrecacheResources
     def __init__(self, br: GsrReader, blender_frame: int, scale: float, collection, no_depth_collection, mod: Mod, options: GsrOptions):
         self.blender_scale = scale
         # for weaponmodel and submodels (player models)
@@ -455,10 +455,10 @@ class Entity:
 
         # player-specific stuff
         # FIXME: maybe only use this on players?
-        self.loaded_weaponmodels: dict[CachedModel, StudioModel] = {}
+        self.loaded_weaponmodels: dict[Model, StudioModel] = {}
         # player_model_t DM_PlayerState[r_playerindex]
         self.dm_player_state = PlayerModel()
-        self.loaded_player_models: dict[CachedModel, StudioModel] = {}
+        self.loaded_player_models: dict[Model, StudioModel] = {}
 
         # REVISIT: wish we could just get unlinked object back from creation functions
         self.object = self.model.create_object(self.mod, self.blender_scale, collection, no_depth_collection)
@@ -651,6 +651,8 @@ class Entity:
 
         if self.prev_angles != self.angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
+            # GoldSrc inverts the y rotation for some reason...
+            rotation_euler[1] = -rotation_euler[1]
             self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
             self.prev_angles = self.angles.copy()
 
@@ -760,7 +762,7 @@ class Entity:
                 self.gaityaw = -180.0
 
     # R_StudioProcessGait
-    def studio_process_gait(self, cl: Cl, model: CachedModel) -> None:
+    def studio_process_gait(self, cl: Cl, model: Model) -> None:
         # engine ensures self.sequence is a good index
         sequence = model.mdl.sequences[self.sequence]
 
@@ -818,8 +820,8 @@ class Entity:
     def studio_merge_bones(
         self,
         cl: Cl,
-        model: CachedModel,
-        submodel: CachedModel,
+        model: Model,
+        submodel: Model,
         bone_transform: dict[int, Matrix],
     ) -> dict[int, Matrix]:
         # sequence bounds check doesn't get propogated beacuse saveent is used to reset currententity after
@@ -1082,7 +1084,7 @@ class Entity:
     def studio_render_model(
         self,
         blender_frame: int,
-        model: CachedModel,
+        model: Model,
         studio_model: StudioModel,
         bone_transform: dict[int, Matrix],
     ):
@@ -1162,7 +1164,7 @@ class Entity:
         return blend, pitch
 
     # R_StudioCalcBoneAdj
-    def studio_calc_bone_adj(self, model: CachedModel, dadt: float, controller1: list[int], controller2: list[int], mouthopen: int) -> list[float]:
+    def studio_calc_bone_adj(self, model: Model, dadt: float, controller1: list[int], controller2: list[int], mouthopen: int) -> list[float]:
         adj: list[float] = []
 
         for bc in model.mdl.bone_controllers:
@@ -1232,7 +1234,7 @@ class Entity:
     def studio_calc_rotations(
         self,
         cl: Cl,
-        model: CachedModel,
+        model: Model,
         sequence: Sequence,
         anim: Blend,
         f: float,
@@ -1327,7 +1329,7 @@ class Entity:
     def studio_set_up_bones(
         self,
         cl: Cl,
-        model: CachedModel,
+        model: Model,
     ) -> dict[int, Matrix]:
         # engine sets curstate.sequence to 0 if it's higher than the number of sequences
 
@@ -1426,8 +1428,8 @@ class ViewmodelEntity(Entity):
         self.mod = mod
         self.options = options
 
-        self.prev_viewmodel: Optional[CachedModel] = None
-        self.loaded_viewmodels: dict[CachedModel, StudioModel] = {}
+        self.prev_viewmodel: Optional[Model] = None
+        self.loaded_viewmodels: dict[Model, StudioModel] = {}
 
         self.object: bpy.types.Object = bpy.data.objects.new("viewent", None)
         self.collection.objects.link(self.object)
@@ -1919,7 +1921,7 @@ class Cl:
 
 
     # CL_GetModelByIndex
-    def get_model_by_index(self, index: int) -> Optional[CachedModel]:
+    def get_model_by_index(self, index: int) -> Optional[Model]:
         try:
             model = self.mod[index]
         except IndexError:
@@ -1958,6 +1960,7 @@ class Gsr:
 
         self.bsp = Bsp(self.fs, map_file)
         self.face_mesh_map = self.bsp.generate_face_mesh_map()
+        self.fs.close(map_file)
 
         self.lightstyle_id_map: dict[int, list[tuple[FCurveBuffer, float | None]]] = defaultdict(list)
         for light in bpy.data.lights:
@@ -2010,13 +2013,13 @@ class Gsr:
             name = self.br.fixed_string(length)
             self.decal_names.append(name)
 
-        wad_file = self.fs.open("decals.wad", "rb", "DEFAULTGAME")
-        if wad_file is None:
+        # FIXME: load and merge wads the same way the engine does
+        decal_wad_file = self.fs.open("decals.wad", "rb", "DEFAULTGAME")
+        if decal_wad_file is None:
             raise Exception(f"Couldn't find 'decals.wad' in \"DEFAULTGAME\" search path")
 
-        self.decal_wad = Wad(wad_file, "decals.wad")
+        self.decal_wad = Wad(decal_wad_file, "decals.wad")
 
-        # because python classes share default :)))))))))))
         self.mod: Mod = Mod(self.fs)
         self.cl = Cl(self.mod)
 
@@ -2216,6 +2219,8 @@ class Gsr:
         scene.frame_current = 1
         scene.frame_end = self.frame - 1
 
+        self.fs.close(decal_wad_file)
+
         print(f"finished importing gsr!")
         wm.progress_end()
 
@@ -2224,6 +2229,7 @@ class Gsr:
         images: list[Optional[bpy.types.Image]] = []
         skyname = self.skyname
 
+        # FIXME: the loading of the file should happen inside the tga's load function (match engine)
         for i, suffix in enumerate(SKYNAME_SUFFIX):
             path = f"gfx/env/{self.skyname}{suffix}.tga"
             file = self.fs.open(path, "rb")
@@ -2241,6 +2247,8 @@ class Gsr:
                     continue
 
             tga = Tga.load(file, MAX_SKY_TGA_RESOLUTION)
+
+            self.fs.close(file)
 
             if tga is None:
                 images.append(None)
@@ -2349,7 +2357,7 @@ class Gsr:
             name_length = self.br.u8()
             name = self.br.fixed_string(name_length)
             # Mod_FindName (inserting, but not loading)
-            model = CachedModel(self.fs, name)
+            model = Model(self.fs, name)
             self.mod.append(model)
             # HACK: we don't know resource types, so this is kind of just a guess
             # this only works beacuse Mod_LoadBrushModel calls Mod_FindName for submodel

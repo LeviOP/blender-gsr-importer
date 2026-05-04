@@ -487,6 +487,7 @@ class Bsp:
     def load_lump(self, name: str) -> Optional[tuple[MipTex, bytes]]:
         assert self.wads is not None
 
+        # FIXME: I think "lump_sorter" does something functionally different
         for wad in self.wads:
             result = wad.get_miptex_and_buffer(name)
             if result is not None:
@@ -499,7 +500,7 @@ class Bsp:
         assert self.wads is not None
 
         for wad in self.wads:
-            wad.file.close()
+            self.fs.close(wad.file)
 
     def create_models(self, scale: float, collection: bpy.types.Collection, texture_emissive_map: dict[str, tuple[float, Optional[tuple[int, int, int]]]]):
         for (i, model) in enumerate(iter_lump_structs(self.file, self.header.lumps[LUMP.MODELS], Model)):

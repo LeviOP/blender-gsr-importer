@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "gsr_importer"
+version = "0.0.1"
+name = "GSR Importer"
+tagline = "Import GoldSrc State Recordings into Blender"
+maintainer = "LeviOP"
+type = "add-on"
+
+website = "https://github.com/LeviOP/blender-gsr-importer"
+
+tags = ["Import-Export"]
+
+blender_version_min = "5.1.0"
+
+license = [
+    "SPDX:GPL-3.0-or-later"
+]
+
+[permissions]
+files = "Reads imported GSR files and required GoldSrc assets"

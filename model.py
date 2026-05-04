@@ -11,7 +11,7 @@ class ModelType(IntEnum):
     ALIAS = 3
     STUDIO = 4
 
-class Mod(list['CachedModel']):
+class Mod(list['Model']):
     def __init__(self, fs: FileSystem):
         self.fs = fs
 
@@ -20,7 +20,7 @@ class Mod(list['CachedModel']):
     # we should always "find" a model or something has gone wrong
     # &&& ABOVE STATEMENT IS NOT TRUE FOR SOME REASON
     # Not sure why yet... but we're gonna do it anyway
-    def find_name(self, name: str) -> Optional['CachedModel']:
+    def find_name(self, name: str) -> Optional['Model']:
         for mod in self:
             if mod.name == name:
                 return mod
@@ -30,10 +30,10 @@ class Mod(list['CachedModel']):
 
     # Mod_LoadModel
     @overload
-    def load_model(self, model: CachedModel, crash: Literal[True]) -> 'CachedModel': ...
+    def load_model(self, model: Model, crash: Literal[True]) -> 'Model': ...
     @overload
-    def load_model(self, model: CachedModel, crash: Literal[False]) -> 'CachedModel': ...
-    def load_model(self, model: CachedModel, crash: bool) -> Optional['CachedModel']:
+    def load_model(self, model: Model, crash: Literal[False]) -> 'Model': ...
+    def load_model(self, model: Model, crash: bool) -> Optional['Model']:
         if model.loaded:
             return model
 
@@ -52,28 +52,31 @@ class Mod(list['CachedModel']):
 
         model.loaded = True
 
-        # engine actually loads the files here but I don't want to load things if they are
-        # never actually rendered so we lazily load
         match file.read(4):
             case b"IDSO":
                 model.type = ModelType.ALIAS
             case b"IDSP":
                 model.type = ModelType.SPRITE
+                model.spr = Spr.from_file(file)
             case b"IDST":
                 model.type = ModelType.STUDIO
+                model.mdl = Mdl.from_file(file, self.fs)
             case _:
                 model.type = ModelType.BRUSH
+                # although the engine uses this to load the map once, we don't so this code
+                # path really shouldn't ever be taken
+                raise Exception("Trying to load brush model which wasn't already loaded!?")
 
-        model._file = file
+        self.fs.close(file)
 
         return model
 
     # Mod_ForName
     @overload
-    def for_name(self, name: str, crash: Literal[True]) -> 'CachedModel': ...
+    def for_name(self, name: str, crash: Literal[True]) -> 'Model': ...
     @overload
-    def for_name(self, name: str, crash: Literal[False]) -> Optional['CachedModel']: ...
-    def for_name(self, name: str, crash: bool) -> Optional['CachedModel']:
+    def for_name(self, name: str, crash: Literal[False]) -> Optional['Model']: ...
+    def for_name(self, name: str, crash: bool) -> Optional['Model']:
         mod = self.find_name(name)
 
         if mod is None:
@@ -85,34 +88,16 @@ class Mod(list['CachedModel']):
 from .mdl import Mdl
 from .spr import Spr
 
-class CachedModel():
+# model_t
+class Model():
     # needload
     loaded: bool = False
     # default 0 = mod_brush
     type: ModelType = ModelType.BRUSH
-    _file: BinaryIO | None = None
-    @property
-    def file(self) -> BinaryIO:
-        if self._file is None:
-            raise Exception("Tried to access file without loading model first!")
 
-        return self._file
-
-    _mdl: Mdl | None = None
-    @property
-    def mdl(self) -> Mdl:
-        if self._mdl is None:
-            self._mdl = Mdl.from_file(self.file, self.fs)
-
-        return self._mdl
-
-    _spr: Spr | None = None
-    @property
-    def spr(self) -> Spr:
-        if self._spr is None:
-            self._spr = Spr.from_file(self.file)
-
-        return self._spr
+    # model and sprite data stored in "cache" on engine model_t
+    mdl: Mdl
+    spr: Spr
 
     def __init__(self, fs: FileSystem, name: str):
         self.name = name

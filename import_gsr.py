@@ -1,100 +1,45 @@
 import bpy
+from bpy_extras.io_utils import ImportHelper
 
 from .gsr import Gsr, GsrOptions
 from .filesystem import FileSystem, FileSystemOptions
+from .preferences import PROP_ARGS
 
-class GSR_OT_import_gsr(bpy.types.Operator):
+class GSR_OT_import_gsr(bpy.types.Operator, ImportHelper):
     bl_idname = "gsr.import_gsr"
     bl_label = "GoldSrc State Recording (.gsr)"
+    bl_description = "Import a GoldSrc State Recording"
+    bl_options = {"UNDO", "PRESET"}
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")
     filter_glob: bpy.props.StringProperty(default="*.gsr", options={'HIDDEN'})
 
-    base: bpy.props.StringProperty(
-        name="Base engine directory",
-        # can't have one inside.. this is fine.
-        # subtype="DIR_PATH",
-        default="/home/levi/Desktop/hl"
-    )
-    base_dir: bpy.props.StringProperty(
-        name="Base game directory",
-        default="valve",
-    )
-    game: bpy.props.StringProperty(
-        name="Game",
-        default="valve"
-    )
-    import_mod: bpy.props.StringProperty(
-        name="Mod name",
-        default="valve",
-    )
-    addons_folder: bpy.props.BoolProperty(
-        name="Use addons folder",
-        default=True,
-    )
-    low_violence: bpy.props.BoolProperty(
-        name="Enable low violence mode",
-        default=False,
-    )
-    language: bpy.props.StringProperty(
-        name="Language",
-        default="english",
-    )
-    hdmodels: bpy.props.BoolProperty(
-        name="Enable HD models",
-        default=False,
-    )
-    map: bpy.props.StringProperty(
-        name="Map",
-        default="maps/crossfire.bsp",
-    )
-    scale: bpy.props.FloatProperty(
-        name="Scale",
-        default=0.01,
-    )
-    hide_viewentity_player: bpy.props.BoolProperty(
-        name="Hide viewentity player",
-        default=True,
-    )
-    viewent_camera_rays: bpy.props.BoolProperty(
-        name="Camera rays",
-        default=False,
-    )
-    viewent_shadow_rays: bpy.props.BoolProperty(
-        name="Shadow rays",
-        default=False,
-    )
-    viewent_diffuse_rays: bpy.props.BoolProperty(
-        name="Diffuse rays",
-        default=True,
-    )
-    viewent_glossy_rays: bpy.props.BoolProperty(
-        name="Glossy rays",
-        default=True,
-    )
-    viewent_singular_rays: bpy.props.BoolProperty(
-        name="Singular rays",
-        default=True,
-    )
-    viewent_reflection_rays: bpy.props.BoolProperty(
-        name="Reflection rays",
-        default=True,
-    )
-    viewent_transmission_rays: bpy.props.BoolProperty(
-        name="Transmission rays",
-        default=True,
-    )
-    viewent_volume_scatter_rays: bpy.props.BoolProperty(
-        name="Volume scatter rays",
-        default=True,
-    )
-
-    def invoke(self, context, event):
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
+    base: bpy.props.StringProperty(**PROP_ARGS["base"])
+    base_dir: bpy.props.StringProperty(**PROP_ARGS["base_dir"])
+    game: bpy.props.StringProperty(**PROP_ARGS["game"])
+    addons_folder: bpy.props.BoolProperty(**PROP_ARGS["addons_folder"])
+    low_violence: bpy.props.BoolProperty(**PROP_ARGS["low_violence"])
+    language: bpy.props.StringProperty(**PROP_ARGS["language"])
+    hdmodels: bpy.props.BoolProperty(**PROP_ARGS["hdmodels"])
+    map: bpy.props.StringProperty(**PROP_ARGS["map"])
+    scale: bpy.props.FloatProperty(**PROP_ARGS["scale"])
+    hide_viewentity_player: bpy.props.BoolProperty(**PROP_ARGS["hide_viewentity_player"])
+    viewent_camera_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_camera_rays"])
+    viewent_shadow_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_shadow_rays"])
+    viewent_diffuse_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_diffuse_rays"])
+    viewent_glossy_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_glossy_rays"])
+    viewent_singular_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_singular_rays"])
+    viewent_reflection_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_reflection_rays"])
+    viewent_transmission_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_transmission_rays"])
+    viewent_volume_scatter_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_volume_scatter_rays"])
 
     def draw(self, context):
-        pass
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        import_panel_filesystem(layout, self)
+        import_panel_gsr(layout, self)
 
     def execute(self, context):
         try:
@@ -137,105 +82,48 @@ class GSR_OT_import_gsr(bpy.types.Operator):
         #     self.report({"ERROR"}, f"Error while importing GSR: {e}")
         #     return {"CANCELLED"}
 
+        file.close()
+
         return {"FINISHED"}
 
+def import_panel_filesystem(layout: bpy.types.UILayout, operator):
+    header, body = layout.panel("GSR_import_filesystem", default_closed=False)
+    header.label(text="Filesystem")
+    if body:
+        body.prop(operator, "base")
+        body.prop(operator, "base_dir")
+        body.prop(operator, "game")
+        body.prop(operator, "addons_folder")
+        body.prop(operator, "low_violence")
+        body.prop(operator, "language")
+        body.prop(operator, "hdmodels")
 
-class GSR_PT_import_filesystem(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "Filesystem"
-    bl_parent_id = "FILE_PT_operator"
-    # bl_options = {'DEFAULT_CLOSED'}
+def import_panel_gsr(layout: bpy.types.UILayout, operator):
+    header, body = layout.panel("GSR_import_gsr", default_closed=False)
+    header.label(text="GSR")
+    if body:
+        body.prop(operator, "map")
+        body.prop(operator, "scale")
+        body.prop(operator, "hide_viewentity_player")
 
-    @classmethod
-    def poll(cls, context):
-        op = context.space_data.active_operator
-        return op is not None and op.bl_idname == "GSR_OT_import_gsr"
+        import_panel_viewent_rays(body, operator)
 
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-
-        op = context.space_data.active_operator
-        layout.prop(op, "base")
-        layout.prop(op, "base_dir")
-        layout.prop(op, "game")
-        layout.prop(op, "addons_folder")
-        layout.prop(op, "low_violence")
-        layout.prop(op, "language")
-        layout.prop(op, "hdmodels")
-
-
-class GSR_PT_import_gsr(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "GSR"
-    bl_parent_id = "FILE_PT_operator"
-    # bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        op = context.space_data.active_operator
-        return op is not None and op.bl_idname == "GSR_OT_import_gsr"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-
-        op = context.space_data.active_operator
-        layout.prop(op, "map")
-        layout.prop(op, "scale")
-        layout.prop(op, "hide_viewentity_player")
-
-
-class GSR_PT_import_viewent(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "Viewent rays"
-    bl_parent_id = "GSR_PT_import_gsr"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        op = context.space_data.active_operator
-        return op is not None and op.bl_idname == "GSR_OT_import_gsr"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-
-        op = context.space_data.active_operator
-
-        col = layout
-        col.prop(op, "viewent_camera_rays")
-        col.prop(op, "viewent_shadow_rays")
-        col.prop(op, "viewent_diffuse_rays")
-        col.prop(op, "viewent_glossy_rays")
-        col.prop(op, "viewent_singular_rays")
-        col.prop(op, "viewent_reflection_rays")
-        col.prop(op, "viewent_transmission_rays")
-        col.prop(op, "viewent_volume_scatter_rays")
-
+def import_panel_viewent_rays(layout: bpy.types.UILayout, operator):
+    header, body = layout.panel("GSR_import_viewent_rays", default_closed=True)
+    header.label(text="Viewent rays")
+    if body:
+        body.prop(operator, "viewent_camera_rays")
+        body.prop(operator, "viewent_shadow_rays")
+        body.prop(operator, "viewent_diffuse_rays")
+        body.prop(operator, "viewent_glossy_rays")
+        body.prop(operator, "viewent_singular_rays")
+        body.prop(operator, "viewent_reflection_rays")
+        body.prop(operator, "viewent_transmission_rays")
+        body.prop(operator, "viewent_volume_scatter_rays")
 
 def menu_func_import(self, context):
-    self.layout.operator(GSR_OT_import_gsr.bl_idname, text="GoldSrc State Recording (.gsr)")
+    self.layout.operator(GSR_OT_import_gsr.bl_idname)
 
 classes = (
     GSR_OT_import_gsr,
-    GSR_PT_import_filesystem,
-    GSR_PT_import_gsr,
-    GSR_PT_import_viewent,
 )
-
-def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-
-def unregister():
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)

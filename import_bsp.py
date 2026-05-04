@@ -1,68 +1,40 @@
-from typing import Optional
 import bpy
+
+from typing import Optional
 
 from .filesystem import FileSystem, FileSystemOptions
 from .bsp import Bsp
+from .preferences import PROP_ARGS
 
 class GSR_OT_import_bsp(bpy.types.Operator):
     bl_idname = "gsr.import_bsp"
     bl_label = "GoldSrc Map (.bsp)"
+    bl_description = "Import a GoldSrc map"
+    bl_options = {"UNDO", "PRESET"}
 
-    base: bpy.props.StringProperty(
-        name="Base engine directory",
-        subtype="DIR_PATH",
-        default="/home/levi/Desktop/hl"
-    )
+    preset_subdir = "gsr/import_bsp"
+    preset_operator = "script.execute_preset"
 
-    base_dir: bpy.props.StringProperty(
-        name="Base game directory",
-        default="valve",
-    )
-
-    game: bpy.props.StringProperty(
-        name="Game",
-        default="valve"
-    )
-
-    addons_folder: bpy.props.BoolProperty(
-        name="Use addons folder",
-        default=True,
-    )
-
-    low_violence: bpy.props.BoolProperty(
-        name="Enable low violence mode",
-        default=False,
-    )
-
-    language: bpy.props.StringProperty(
-        name="Language",
-        default = "english",
-    )
-
-    hdmodels: bpy.props.BoolProperty(
-        name="Enable HD models",
-        default=False,
-    )
-
-    map: bpy.props.StringProperty(
-        name="Map",
-        default="maps/crossfire.bsp",
-    )
-
-    scale: bpy.props.FloatProperty(
-        name="Scale",
-        default=0.01,
-    )
+    base: bpy.props.StringProperty(**PROP_ARGS["base"], subtype="DIR_PATH")
+    base_dir: bpy.props.StringProperty(**PROP_ARGS["base_dir"])
+    game: bpy.props.StringProperty(**PROP_ARGS["game"])
+    addons_folder: bpy.props.BoolProperty(**PROP_ARGS["addons_folder"])
+    low_violence: bpy.props.BoolProperty(**PROP_ARGS["low_violence"])
+    language: bpy.props.StringProperty(**PROP_ARGS["language"])
+    hdmodels: bpy.props.BoolProperty(**PROP_ARGS["hdmodels"])
+    map: bpy.props.StringProperty(**PROP_ARGS["map"])
+    scale: bpy.props.FloatProperty(**PROP_ARGS["scale"])
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=500)
 
     def draw(self, context):
-        layout = self.layout
-        assert layout is not None
+        layout: bpy.types.UILayout = self.layout
+
         layout.prop(self, "base")
         layout.prop(self, "base_dir")
         layout.prop(self, "game")
+        layout.prop(self, "addons_folder")
         layout.prop(self, "low_violence")
         layout.prop(self, "language")
         layout.prop(self, "hdmodels")
@@ -111,25 +83,18 @@ class GSR_OT_import_bsp(bpy.types.Operator):
 
         bsp = Bsp(fs, file)
         collection = bpy.data.collections.new("bsp")
+
         bsp.create_models(self.scale, collection, texture_emissive_map)
         bsp.create_lights(self.scale, collection)
+        fs.close(file)
+
         bpy.context.scene.collection.children.link(collection)
 
         return {"FINISHED"}
 
 def menu_func_import(self, context):
-    self.layout.operator(GSR_OT_import_bsp.bl_idname, text="GoldSrc Map (.bsp)")
+    self.layout.operator(GSR_OT_import_bsp.bl_idname)
 
 classes = (
     GSR_OT_import_bsp,
 )
-
-def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-
-def unregister():
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)

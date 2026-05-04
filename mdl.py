@@ -571,6 +571,7 @@ class Mdl:
                     if texture_file is None:
                         raise Exception(f"{texture_file_name} not found")
                     texture_mdl = _parse_mdl(BinaryReader(texture_file), fs)
+                    fs.close(texture_file)
                     textures = texture_mdl.textures
             else:
                 textures = self.textures
@@ -705,20 +706,6 @@ class Mdl:
         #         mdl.skins    = tex_mdl.skins
 
         return mdl
-
-
-# ---------------------------------------------------------------------------
-# Companion-file path helpers
-# ---------------------------------------------------------------------------
-
-def _derive_texture_filepath(main_filepath: str) -> Optional[str]:
-    """
-    Given /path/to/model.mdl  →  /path/to/modelT.mdl
-    Mirrors the logic used by the GoldSrc engine and model viewers.
-    """
-    root, ext = os.path.splitext(main_filepath)
-    return root + 't' + ext
-
 
 # ---------------------------------------------------------------------------
 # Parser
