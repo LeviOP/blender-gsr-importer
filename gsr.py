@@ -35,8 +35,7 @@ class MessageType(IntEnum):
     UpdatePlayer = 3
     UpdateDecals = 4
     UpdateLightstyles = 5
-    SetSkyname = 6
-    SetView = 7
+    SetView = 6
 
 class ObjectField(IntEnum):
     Origin = 0
@@ -1946,12 +1945,26 @@ class GsrOptions:
     viewent_volume_scatter_rays: bool
 
 class Gsr:
-    def __init__(self, file: BinaryIO, fs: FileSystem, map_name: str, options: GsrOptions):
+    def __init__(self, file: BinaryIO, fs: FileSystem, options: GsrOptions):
         print("setting up gsr")
 
         self.br = GsrReader(file)
         self.fs = fs
         self.options = options
+
+        scene = bpy.context.scene
+        assert scene is not None
+        scene_action = ActionContext(scene)
+
+        print(f"reading gsr")
+
+        map_name_length = self.br.u8()
+        map_name = self.br.fixed_string(map_name_length)
+
+        skyname_length = self.br.u8()
+        skyname = self.br.fixed_string(skyname_length)
+
+        self.load_skys(skyname)
 
         map_file = self.fs.open(map_name, "rb")
 
@@ -2000,11 +2013,6 @@ class Gsr:
 
             self.lightstyle_id_map[light_style].append((light_fcurve, None))
 
-        scene = bpy.context.scene
-        assert scene is not None
-        scene_action = ActionContext(scene)
-
-        print(f"reading gsr")
 
         self.decal_names: list[str] = []
         decal_count = self.br.u16()
@@ -2029,7 +2037,6 @@ class Gsr:
         self.beams: dict[int, Beam] = {}
         self.decals: dict[int, Decal] = {}
         self.lightstyles: dict[int, str] = {}
-        self.skyname: Optional[str] = None
         self.prev_skyname: Optional[str] = None
 
         sprite_light: bpy.types.PointLight = bpy.data.lights.new("Point", type="POINT")
@@ -2130,8 +2137,6 @@ class Gsr:
                         self.parse_update_decals()
                     case MessageType.UpdateLightstyles:
                         self.parse_update_lightstyles()
-                    case MessageType.SetSkyname:
-                        self.parse_set_skyname()
                     case MessageType.SetView:
                         self.parse_set_view()
                     case _:
@@ -2142,12 +2147,12 @@ class Gsr:
             self.time_fcurve.insert(self.frame, self.cl.time)
 
             # R_SetupFrame, R_AnimateLight
-            for (index, map) in self.lightstyles.items():
+            for (index, lightstyle) in self.lightstyles.items():
                 if not self.lightstyle_id_map.get(index):
                     continue
 
-                k = int(self.cl.time * 10.0) % len(map)
-                char = map[k]
+                k = int(self.cl.time * 10.0) % len(lightstyle)
+                char = lightstyle[k]
                 value = (ord(char) - ord('a')) / 12.0 # normalize to blender scale (m = 1.0)
 
                 for i, (fcurve, prev_value) in enumerate(self.lightstyle_id_map[index]):
@@ -2202,14 +2207,6 @@ class Gsr:
                 self.viewent.framerate = 1.0
                 self.viewent.studio_draw_model(self.frame, self.cl, self.mod)
 
-            # engine does this in CL_ReadPackets, CL_ParseServerMessage, CL_ParseResourceList, ..., CL_RegisterResources
-            # but we do it down here because we only support a single map (and cls.state) per recording at this point
-            # R_NewMap
-            if self.skyname != self.prev_skyname:
-                self.load_skys()
-
-                self.prev_skyname = self.skyname
-
             self.frame += 1
             wm.progress_update(self.br.tell())
 
@@ -2225,13 +2222,12 @@ class Gsr:
         wm.progress_end()
 
     # R_LoadSkys
-    def load_skys(self):
+    def load_skys(self, skyname: str):
         images: list[Optional[bpy.types.Image]] = []
-        skyname = self.skyname
 
         # FIXME: the loading of the file should happen inside the tga's load function (match engine)
         for i, suffix in enumerate(SKYNAME_SUFFIX):
-            path = f"gfx/env/{self.skyname}{suffix}.tga"
+            path = f"gfx/env/{skyname}{suffix}.tga"
             file = self.fs.open(path, "rb")
             if file is None:
                 print(f"Couldn't load {path}")
@@ -2254,7 +2250,7 @@ class Gsr:
                 images.append(None)
                 continue
 
-            # we should probably check this earlier but... this probably runs once only anyway
+            # we should probably check this earlier but... this only runs once anyway
             if path in bpy.data.images:
                 image = bpy.data.images[path]
             else:
@@ -2332,15 +2328,8 @@ class Gsr:
         for beam in self.beams.values():
             for fcurve in beam.obj_fcurves.values():
                 fcurve.flush()
-            if beam.type == BeamType.TE_BEAMPOINTS:
-                pass
-                # for fcurve in beam.obj_fcurves.values():
-                #     fcurve.flush()
-            elif beam.type == BeamType.TE_BEAMFOLLOW:
+            if beam.type == BeamType.TE_BEAMFOLLOW:
                 beam.create_beamfollow_mesh()
-                # for particle in beam.particles:
-                #     for fcurve in particle.fcurves.values():
-                #         fcurve.flush()
 
         if self.viewent is not None:
             for fcurve in self.viewent.obj_fcurves.values():
@@ -2603,11 +2592,6 @@ class Gsr:
             map_length = self.br.u8()
             map = self.br.fixed_string(map_length)
             self.lightstyles[index] = map
-
-    def parse_set_skyname(self):
-        skyname_length = self.br.u8()
-        skyname = self.br.fixed_string(skyname_length)
-        self.skyname = skyname
 
     def parse_set_view(self):
         viewentity = self.br.u32()

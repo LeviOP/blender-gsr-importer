@@ -10465,6 +10465,7 @@ def setup_anim_bsp_nodes(nodes, links, image, main_frame_count, alt_frame_count)
         nodes["Image Texture"].inputs[0]
     )
 
+# R_DrawSkybox, MakeSkyVec
 # params matching skyname suffixes
 def setup_sky_nodes(shader_nodetree, rt, bk, lf, ft, up, dn):
     # Node Texture Coordinate.001

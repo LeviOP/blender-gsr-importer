@@ -40,6 +40,7 @@ class FileSystemOptions:
     addons_folder: bool
     hdmodels: bool
 
+FS_FILENAME_MAX = 128
 
 class FileSystem:
     # FileSystem_Init
@@ -85,6 +86,8 @@ class FileSystem:
         self.add_search_path(f"{self.base_dir}/{game_dir}", "GAMECONFIG")
         self.add_search_path(f"{self.base_dir}/{game_dir}_downloads", "GAMEDOWNLOADS")
 
+        self.check_liblist_for_fallback_dir(game_dir, b_language, self.options.language, self.options.low_violence)
+
         if b_language:
             if self.options.low_violence:
                 self.add_search_path(f"{self.base_dir}/{default_dir}_lv", "DEFAULTGAME")
@@ -104,6 +107,62 @@ class FileSystem:
         self.add_search_path(f"{self.base_dir}", "BASE")
         self.add_search_path(f"{self.base_dir}/{default_dir}", "DEFAULTGAME")
         self.add_search_path(f"{self.base_dir}/platform", "PLATFORM")
+
+    # CheckLiblistForFallbackDir
+    def check_liblist_for_fallback_dir(self, game_dir: str, b_language: bool, language: str, low_violence: bool):
+        file = self.open("liblist.gam", "rt")
+
+        if file is None:
+            return
+
+        fallback: Optional[str] = None
+
+        for line in file:
+            if not line:
+                break
+
+            line = line.rstrip("\n")
+
+            if line[:12].lower () == "fallback_dir":
+                start_quote = line.find('"')
+                if start_quote == -1:
+                    break
+
+                end_quote = line.find('"', start_quote)
+                if end_quote == -1:
+                    break
+
+                length = end_quote - start_quote
+                if length >= FS_FILENAME_MAX:
+                    break
+
+                fallback = line[start_quote:end_quote]
+                break
+
+        self.close(file)
+
+        if fallback is None or game_dir.lower() == fallback.lower():
+            return
+
+        if low_violence:
+            self.add_search_path(f"{self.base_dir}/{fallback}_lv", "GAME_FALLBACK")
+        if self.options.addons_folder:
+            self.add_search_path(f"{self.base_dir}/{fallback}_addon", "GAME_FALLBACK")
+        if b_language:
+            self.add_search_path(f"{self.base_dir}/{fallback}_{language}", "GAME_FALLBACK")
+
+            # TODO: -steam
+            # if self.options.steam:
+            #     ...
+
+        if self.options.hdmodels:
+            self.add_search_path(f"{self.base_dir}/{fallback}_hd", "GAME_FALLBACK")
+
+        self.add_search_path(f"{self.base_dir}/{fallback}", "GAME_FALLBACK")
+
+        if fallback != "valve":
+            self.check_liblist_for_fallback_dir(fallback, b_language, language, low_violence)
+
 
     # FixSlashes
     @staticmethod
@@ -166,7 +225,7 @@ class FileSystem:
     @overload
     def fs_fopen(self, file_name: str, options: Literal["rb", "wb", "ab", "r+b", "w+b"]) -> Optional[BinaryIO]: ...
     @overload
-    def fs_fopen(self, file_name: str, options: Literal["r", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
+    def fs_fopen(self, file_name: str, options: Literal["r", "rt", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
     @overload
     def fs_fopen(self, file_name: str, options: str) -> Optional[IO]: ...
     def fs_fopen(self, file_name: str, options: str) -> Optional[IO]:
@@ -187,7 +246,7 @@ class FileSystem:
     @overload
     def trace_fopen(self, file_name: str, options: Literal["rb", "wb", "ab", "r+b", "w+b"]) -> Optional[BinaryIO]: ...
     @overload
-    def trace_fopen(self, file_name: str, options: Literal["r", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
+    def trace_fopen(self, file_name: str, options: Literal["r", "rt", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
     @overload
     def trace_fopen(self, file_name: str, options: str) -> Optional[IO]: ...
     def trace_fopen(self, file_name: str, options: str):
@@ -201,7 +260,7 @@ class FileSystem:
     @overload
     def find_file(self, search_path: SearchPath, file_name: str, options: Literal["rb", "wb", "ab", "r+b", "w+b"]) -> Optional[BinaryIO]: ...
     @overload
-    def find_file(self, search_path: SearchPath, file_name: str, options: Literal["r", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
+    def find_file(self, search_path: SearchPath, file_name: str, options: Literal["r", "rt", "w", "a", "r+", "w+"]) -> Optional[TextIO]: ...
     @overload
     def find_file(self, search_path: SearchPath, file_name: str, options: str) -> Optional[IO]: ...
     def find_file(self, search_path: SearchPath, file_name: str, options: str):
@@ -213,7 +272,7 @@ class FileSystem:
     @overload
     def open(self, file_name: str, options: Literal["rb", "wb", "ab", "r+b", "w+b"], path_id: Optional[str] = None) -> Optional[BinaryIO]: ...
     @overload
-    def open(self, file_name: str, options: Literal["r", "w", "a", "r+", "w+"], path_id: Optional[str] = None) -> Optional[TextIO]: ...
+    def open(self, file_name: str, options: Literal["r", "rt", "w", "a", "r+", "w+"], path_id: Optional[str] = None) -> Optional[TextIO]: ...
     @overload
     def open(self, file_name: str, options: str, path_id: Optional[str] = None) -> Optional[IO]: ...
     def open(self, file_name: str, options: str, path_id: Optional[str] = None):

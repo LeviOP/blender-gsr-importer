@@ -21,7 +21,6 @@ class GSR_OT_import_gsr(bpy.types.Operator, ImportHelper):
     low_violence: bpy.props.BoolProperty(**PROP_ARGS["low_violence"])
     language: bpy.props.StringProperty(**PROP_ARGS["language"])
     hdmodels: bpy.props.BoolProperty(**PROP_ARGS["hdmodels"])
-    map: bpy.props.StringProperty(**PROP_ARGS["map"])
     scale: bpy.props.FloatProperty(**PROP_ARGS["scale"])
     hide_viewentity_player: bpy.props.BoolProperty(**PROP_ARGS["hide_viewentity_player"])
     viewent_camera_rays: bpy.props.BoolProperty(**PROP_ARGS["viewent_camera_rays"])
@@ -77,7 +76,7 @@ class GSR_OT_import_gsr(bpy.types.Operator, ImportHelper):
         )
 
         # try:
-        Gsr(file, fs, self.map, options)
+        Gsr(file, fs, options)
         # except Exception as e:
         #     self.report({"ERROR"}, f"Error while importing GSR: {e}")
         #     return {"CANCELLED"}
@@ -102,7 +101,6 @@ def import_panel_gsr(layout: bpy.types.UILayout, operator):
     header, body = layout.panel("GSR_import_gsr", default_closed=False)
     header.label(text="GSR")
     if body:
-        body.prop(operator, "map")
         body.prop(operator, "scale")
         body.prop(operator, "hide_viewentity_player")
 
