@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import BinaryIO, List, Optional, Dict, Tuple
 import io
 import bpy
+import numpy as np
 
 from .model import Mod
 from . import binary_reader
@@ -118,7 +119,8 @@ class AnimationFrame:
 
 @dataclass
 class Blend:
-    frames: List[AnimationFrame] = field(default_factory=list)
+    positions: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
+    rotations: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
 
 class SequenceFlags(IntFlag):
     LOOPING = 0x0001
@@ -146,7 +148,7 @@ class SequenceMotionFlags(IntFlag):
 class Sequence:
     name: str = ""
     framerate: float = 0.0
-    flags: SequenceFlags = SequenceFlags(0)
+    flags: int = 0
     activity: int = 0
     activity_weight: int = 0
     num_events: int = 0
@@ -154,7 +156,7 @@ class Sequence:
     num_frames: int = 0
     num_pivots: int = 0
     pivot_index: int = 0
-    motion_type: SequenceMotionFlags = SequenceMotionFlags(0)
+    motion_type: int = 0
     motion_bone: int = 0
     linear_movement: Vector3 = field(default_factory=Vector3)
     auto_move_position_index: int = 0
@@ -219,7 +221,7 @@ class Mesh:
     skin_ref: int = 0
     num_normals: int = 0
     normal_index: int = 0
-    vertices: List[MeshVertex] = field(default_factory=list)
+    vertices: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -275,7 +277,6 @@ def _blender_image_from_texture(texture: 'Texture', model_name: str) -> 'bpy.typ
     Uses numpy for the palette→RGBA conversion; result is flipped vertically
     to match Blender's bottom-left UV origin.
     """
-    import bpy
     import numpy as np
 
     image_name = f"{model_name}_{texture.name}"
@@ -306,7 +307,6 @@ def _blender_material_from_texture(
     Build (or reuse) a Blender material for *texture* and append it to *obj*.
     Returns the material slot index on *obj*.
     """
-    import bpy
 
     mat_name = f"{model_name}_{texture.name}"
 
@@ -369,7 +369,6 @@ def _build_bone_transforms(
     bones: List['Bone'],
     scale: float,
 ) -> List['mathutils.Matrix']:
-    import bpy
     from mathutils import Euler, Matrix, Vector
 
     armature = armature_obj.data
@@ -472,22 +471,18 @@ class Mdl:
         and wrap it in a new Object that is linked into the scene.  This
         avoids repeating the slow edit→pose→apply cycle.
         """
-        import bpy
 
         if self._armature_cache is not None:
             # ── fast path: copy the cached data-block ──────────────────────
             arm_copy    = self._armature_cache.data.copy()   # Armature ID copy
             arm_obj_new = bpy.data.objects.new(name, arm_copy)
             collection.objects.link(arm_obj_new)
-            arm_obj_new.show_in_front = True
 
             # Force a depsgraph evaluation so the object's internal state is
             # fully initialised before the caller touches animation data.
             # Without this, assigning action_slot on a freshly-linked copy
             # causes a segfault because Blender's animation system hasn't yet
             # registered the object with the evaluated depsgraph.
-            arm_obj_new.select_set(True)
-            bpy.context.view_layer.objects.active = arm_obj_new
             bpy.context.view_layer.update()
 
             return arm_obj_new, self._bone_transforms_cache
@@ -514,17 +509,7 @@ class Mdl:
     # Mesh helpers
     # ------------------------------------------------------------------
 
-    def _create_body_part_mesh(
-        self,
-        body_part_model: 'Model',
-        armature_obj: 'bpy.types.Object',
-        bone_transforms: List,
-        mod: Mod,
-        name: str,
-        fs: FileSystem,
-        scale: float,
-        collection,
-    ) -> None:
+    def _create_body_part_mesh(self, body_part_model: 'Model', armature_obj: 'bpy.types.Object', bone_transforms: List, mod: Mod, name: str, fs: FileSystem, scale: float, collection) -> None:
         """
         Build one Blender mesh object for *body_part_model* and parent it to
         *armature_obj*.
@@ -534,8 +519,6 @@ class Mdl:
         groups and bone transforms are applied.  UVs use a per-face dict keyed
         by vertex index (SourceIO approach) so UV seams are handled correctly.
         """
-        import bpy
-        from mathutils import Vector
 
         model_name = f"{armature_obj.name}_{body_part_model.name}"
         obj_mesh   = bpy.data.meshes.new(model_name)
@@ -544,37 +527,33 @@ class Mdl:
         obj.parent = armature_obj
 
         # ── collect materials and per-triangle geometry ────────────────────
-        mat_slot:  Dict[int, int] = {}
-        positions: List          = []   # one (x,y,z) per vertex
-        faces:     List          = []   # one [i,j,k] per triangle
-        # per-face UV dict: face_index → {vert_index: (u,v)}
-        uv_per_face: List[Dict[int, Tuple[float, float]]] = []
-        # per-loop raw normals, in face/loop order matching `faces`
-        loop_normals_raw: List[Tuple[float, float, float]] = []
-        # per-vertex bone index, parallel to `positions`
-        vert_bone: List[int] = []
-        mat_indices: List[int] = []
+        mat_slot:        Dict[int, int] = {}
+        all_positions:   List           = []
+        all_faces:       List           = []
+        all_vert_bone:   List           = []
+        all_mat_indices: List           = []
+        all_uvs:         List           = []   # flat (N*3, 2) in loop order
+        all_normals:     List           = []   # flat (N*3, 3) in loop order
+
+        # Resolve textures once before the mesh_part loop
+        if len(self.textures) == 0:
+            texture_file_name = f"{name[:-4]}T.mdl"
+            try:
+                model = mod.for_name(texture_file_name, True)
+                textures = model.mdl.textures
+            except Exception:
+                texture_file = fs.open(texture_file_name, "rb")
+                if texture_file is None:
+                    raise Exception(f"{texture_file_name} not found")
+                texture_mdl = _parse_mdl(BinaryReader(texture_file), fs)
+                fs.close(texture_file)
+                textures = texture_mdl.textures
+        else:
+            textures = self.textures
 
         for mesh_part in body_part_model.meshes:
             skin_ref = mesh_part.skin_ref
-            # R_LoadTextures
-            if len(self.textures) == 0:
-                texture_file_name = f"{name[:-4]}T.mdl"
-                try:
-                    model = mod.for_name(texture_file_name, True)
-                    textures = model.mdl.textures
-                except Exception:
-                    # HACKHACK: we have to do this because BB check can cause texture not
-                    # to be drawn (therefore not added to mod_known) but it will still be
-                    # in cl_visedicts meaning we are going to "draw" it :)))
-                    texture_file = fs.open(texture_file_name, "rb")
-                    if texture_file is None:
-                        raise Exception(f"{texture_file_name} not found")
-                    texture_mdl = _parse_mdl(BinaryReader(texture_file), fs)
-                    fs.close(texture_file)
-                    textures = texture_mdl.textures
-            else:
-                textures = self.textures
+
             if skin_ref not in mat_slot:
                 if 0 <= skin_ref < len(textures):
                     mat_slot[skin_ref] = _blender_material_from_texture(
@@ -583,65 +562,65 @@ class Mdl:
                 else:
                     mat_slot[skin_ref] = 0
 
-            tw = textures[skin_ref].width  if 0 <= skin_ref < len(textures) else 1
-            th = textures[skin_ref].height if 0 <= skin_ref < len(textures) else 1
+            tw     = textures[skin_ref].width  if 0 <= skin_ref < len(textures) else 1
+            th     = textures[skin_ref].height if 0 <= skin_ref < len(textures) else 1
+            inv_tw = 1.0 / tw
+            inv_th = 1.0 / th
+            mat_idx = mat_slot[skin_ref]
 
-            verts = mesh_part.vertices
-            for i in range(0, len(verts) - 2, 3):
-                v0, v1, v2 = verts[i], verts[i+1], verts[i+2]
+            data = mesh_part.vertices  # now a dict of numpy arrays from _read_triangles
 
-                base = len(positions)
-                positions.append((v0.vertex.x * scale, v0.vertex.y * scale, v0.vertex.z * scale))
-                positions.append((v1.vertex.x * scale, v1.vertex.y * scale, v1.vertex.z * scale))
-                positions.append((v2.vertex.x * scale, v2.vertex.y * scale, v2.vertex.z * scale))
+            pos   = data["positions"] * scale   # (N, 3)
+            norms = data["normals"]             # (N, 3)
+            vb    = data["vertex_bones"]        # (N,)
+            uvs   = data["uvs"].copy()          # (N, 2)
+            uvs[:, 0] =       uvs[:, 0] * inv_tw
+            uvs[:, 1] = 1.0 - uvs[:, 1] * inv_th
 
-                vert_bone.append(v0.vertex_bone)
-                vert_bone.append(v1.vertex_bone)
-                vert_bone.append(v2.vertex_bone)
+            n_verts = len(pos)
+            n_tris  = n_verts // 3
 
-                # Reversed winding [base, base+2, base+1] for Blender CCW
-                faces.append([base, base + 2, base + 1])
-                mat_indices.append(mat_slot[skin_ref])
+            # Apply reversed winding [v0, v2, v1] for Blender CCW
+            reorder = np.arange(n_verts).reshape(-1, 3)[:, [0, 2, 1]].ravel()
+            pos   = pos[reorder]
+            norms = norms[reorder]
+            vb    = vb[reorder]
+            uvs   = uvs[reorder]
 
-                # UV per face-corner, keyed by vertex index so seams work
-                uv_per_face.append({
-                    base:     (v0.texture.x / tw, 1.0 - v0.texture.y / th),
-                    base + 2: (v2.texture.x / tw, 1.0 - v2.texture.y / th),
-                    base + 1: (v1.texture.x / tw, 1.0 - v1.texture.y / th),
-                })
+            base = len(all_positions)
+            all_positions.extend(pos.tolist())
+            all_vert_bone.extend(vb.tolist())
+            all_mat_indices.extend([mat_idx] * n_tris)
+            all_uvs.extend(uvs.tolist())
+            all_normals.extend(norms.tolist())
 
-                # Normals in the same winding order [v0, v2, v1]
-                loop_normals_raw.append((v0.normal.x, v0.normal.y, v0.normal.z))
-                loop_normals_raw.append((v2.normal.x, v2.normal.y, v2.normal.z))
-                loop_normals_raw.append((v1.normal.x, v1.normal.y, v1.normal.z))
+            tri_indices = np.arange(n_verts).reshape(-1, 3) + base
+            all_faces.extend(tri_indices.tolist())
 
-        if not positions:
+        if not all_positions:
             return
 
-        # ── build mesh via from_pydata ─────────────────────────────────────
-        obj_mesh.from_pydata(positions, [], faces)
+        obj_mesh.from_pydata(all_positions, [], all_faces)
         obj_mesh.update()
 
-        for poly_idx, poly in enumerate(obj_mesh.polygons):
-            poly.use_smooth     = True
-            poly.material_index = mat_indices[poly_idx]
+        poly_count = len(obj_mesh.polygons)
+        obj_mesh.polygons.foreach_set("use_smooth",     [True] * poly_count)
+        obj_mesh.polygons.foreach_set("material_index", all_mat_indices)
 
         # ── UV layer ──────────────────────────────────────────────────────
         uv_layer = obj_mesh.uv_layers.new(name="UVMap")
-        for poly in obj_mesh.polygons:
-            face_uvs = uv_per_face[poly.index]
-            for loop_idx in range(poly.loop_start, poly.loop_start + poly.loop_total):
-                vi = obj_mesh.loops[loop_idx].vertex_index
-                uv_layer.data[loop_idx].uv = face_uvs[vi]
+        uv_flat  = [c for uv in all_uvs for c in uv]
+        uv_layer.data.foreach_set("uv", uv_flat)
 
-        # ── vertex groups + bone transforms ───────────────────────────────
-        # Group vertices by bone index, then:
-        #   1. create the vertex group and assign with weight 1.0
-        #   2. transform the vertex positions into bind-pose world space
-        # This exactly matches what both MdlImporter and SourceIO do.
+        # Build bone_groups from numpy array directly
         bone_groups: Dict[int, List[int]] = {}
-        for vi, bi in enumerate(vert_bone):
+        for vi, bi in enumerate(all_vert_bone):
             bone_groups.setdefault(bi, []).append(vi)
+
+        # Read all vertex positions at once
+        co_flat = np.empty(len(obj_mesh.vertices) * 3, dtype=np.float64)
+        obj_mesh.vertices.foreach_get("co", co_flat)
+        co = co_flat.reshape(-1, 3)
 
         for bone_idx, vert_indices in bone_groups.items():
             if bone_idx >= len(self.bones):
@@ -652,27 +631,43 @@ class Mdl:
             vg.add(vert_indices, 1.0, 'ADD')
 
             if bone_idx < len(bone_transforms):
-                xform = bone_transforms[bone_idx]
-                for vi in vert_indices:
-                    obj_mesh.vertices[vi].co = xform @ obj_mesh.vertices[vi].co
+                xform = np.array(bone_transforms[bone_idx], dtype=np.float64).reshape(4, 4)
+                idx = np.array(vert_indices)
+                pts = co[idx]                                        # (M, 3)
+                ones = np.ones((len(pts), 1), dtype=np.float64)
+                pts_h = np.hstack([pts, ones])                       # (M, 4) homogeneous
+                co[idx] = (xform @ pts_h.T).T[:, :3]
 
-        # ── custom split normals ───────────────────────────────────────────
-        # Transform each raw normal by its bone's rotation matrix, then set
-        # them in loop order.  loop_normals_raw is already parallel to loops
-        # because we built it in the same winding order as `faces`.
-        transformed: List[Tuple[float, float, float]] = []
-        for loop in obj_mesh.loops:
-            vi   = loop.vertex_index
-            bi   = vert_bone[vi]
-            n    = Vector(loop_normals_raw[loop.index])
+        obj_mesh.vertices.foreach_set("co", co.ravel().tolist())
+
+        loop_count = len(obj_mesh.loops)
+        loop_verts = np.empty(loop_count, dtype=np.int32)
+        obj_mesh.loops.foreach_get("vertex_index", loop_verts)
+
+        # Build per-loop normals array from all_normals
+        norms = np.array(all_normals, dtype=np.float32)   # (loop_count, 3)
+
+        # Cache rotation matrices as numpy arrays per bone
+        rot_cache = {}
+        for bi in np.unique(all_vert_bone):
             if bi < len(bone_transforms):
-                n = (bone_transforms[bi].to_3x3() @ n).normalized()
-            transformed.append((n.x, n.y, n.z))
+                rot_cache[int(bi)] = np.array(bone_transforms[bi].to_3x3(), dtype=np.float32)
+
+        # Apply rotation per bone group
+        bone_arr = np.array(all_vert_bone, dtype=np.int32)
+        loop_bones = bone_arr[loop_verts]                 # (loop_count,) bone per loop
+
+        for bi, rot in rot_cache.items():
+            mask = loop_bones == bi
+            if not np.any(mask):
+                continue
+            rotated = norms[mask] @ rot.T                 # (M, 3)
+            norms_len = np.linalg.norm(rotated, axis=1, keepdims=True)
+            norms_len = np.where(norms_len == 0, 1, norms_len)
+            norms[mask] = rotated / norms_len
 
         obj_mesh.validate()
-        if hasattr(obj_mesh, "use_auto_smooth"):
-            obj_mesh.use_auto_smooth = True
-        obj_mesh.normals_split_custom_set(transformed)
+        obj_mesh.normals_split_custom_set(norms.tolist())
 
         modifier = obj.modifiers.new(name='Armature', type='ARMATURE')
         modifier.object = armature_obj
@@ -802,7 +797,7 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
         seq = Sequence()
         seq.name                     = br.fixed_string(32)
         seq.framerate                = br.f32()
-        seq.flags                    = SequenceFlags(br.i32())
+        seq.flags                    = br.i32()
         seq.activity                 = br.i32()
         seq.activity_weight          = br.i32()
         seq.num_events               = br.i32()
@@ -810,7 +805,7 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
         seq.num_frames               = br.i32()
         seq.num_pivots               = br.i32()
         seq.pivot_index              = br.i32()
-        seq.motion_type              = SequenceMotionFlags(br.i32())
+        seq.motion_type              = br.i32()
         seq.motion_bone              = br.i32()
         seq.linear_movement          = br.vec3()
         seq.auto_move_position_index = br.i32()
@@ -943,101 +938,81 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
 # Animation parsing
 # ---------------------------------------------------------------------------
 
-def _read_animation_blends(br: BinaryReader, seq: Sequence, bones: List[Bone]) -> List[Blend]:
+def _read_animation_blends(br: BinaryReader, seq: Sequence, bones: List[Bone]) -> List['Blend']:
     """
-    Read animation blend data for a sequence.
-    Each blend contains one AnimationFrame per frame, with per-bone positions/rotations
-    that are already scaled and offset into real values.
+    Returns Blend objects where each blend stores positions and rotations
+    as numpy arrays of shape (num_frames, num_bones, 3) instead of
+    per-frame dataclass lists.
     """
-    num_bones   = len(bones)
+    num_bones     = len(bones)
+    num_frames    = seq.num_frames
     axes_per_bone = 6
-    anim_pos = seq.animation_index
+    anim_pos      = seq.animation_index
+
+    # Pre-build bone scale/base as numpy arrays (num_bones, 6)
+    bone_scale = np.array([
+        [b.position_scale.x, b.position_scale.y, b.position_scale.z,
+         b.rotation_scale.x, b.rotation_scale.y, b.rotation_scale.z]
+        for b in bones
+    ], dtype=np.float32)  # (num_bones, 6)
+
+    bone_base = np.array([
+        [b.position.x, b.position.y, b.position.z,
+         b.rotation.x, b.rotation.y, b.rotation.z]
+        for b in bones
+    ], dtype=np.float32)  # (num_bones, 6)
 
     blends: List[Blend] = []
+
     for blend_idx in range(seq.num_blends):
         offsets_start = anim_pos + blend_idx * num_bones * axes_per_bone * 2
 
-        blend = Blend()
-        blend.frames = [
-            AnimationFrame(
-                positions=[Vector3() for _ in range(num_bones)],
-                rotations=[Vector3() for _ in range(num_bones)],
-            )
-            for _ in range(seq.num_frames)
-        ]
+        # Shape: (num_frames, num_bones, 6) — axes 0-2 = pos, 3-5 = rot
+        anim_data = np.empty((num_frames, num_bones, 6), dtype=np.float32)
 
-        for bone_idx, bone in enumerate(bones):
+        for bone_idx in range(num_bones):
             br.seek(offsets_start + bone_idx * axes_per_bone * 2)
             offsets = [br.u16() for _ in range(axes_per_bone)]
-
-            bone_scale = [
-                bone.position_scale.x, bone.position_scale.y, bone.position_scale.z,
-                bone.rotation_scale.x, bone.rotation_scale.y, bone.rotation_scale.z,
-            ]
-            bone_base = [
-                bone.position.x, bone.position.y, bone.position.z,
-                bone.rotation.x, bone.rotation.y, bone.rotation.z,
-            ]
 
             for axis in range(axes_per_bone):
                 offset = offsets[axis]
                 if offset == 0:
-                    base_val = bone_base[axis]
-                    for frame_idx in range(seq.num_frames):
-                        _set_anim_value(blend.frames[frame_idx], bone_idx, axis, base_val)
-                    continue
+                    anim_data[:, bone_idx, axis] = bone_base[bone_idx, axis]
+                else:
+                    br.seek(offsets_start + bone_idx * axes_per_bone * 2 + offset)
+                    raw = _read_rle_values(br, num_frames)          # (num_frames,)
+                    anim_data[:, bone_idx, axis] = (
+                        raw * bone_scale[bone_idx, axis] + bone_base[bone_idx, axis]
+                    )
 
-                br.seek(offsets_start + bone_idx * axes_per_bone * 2 + offset)
-                raw_values = _read_rle_values(br, seq.num_frames)
-
-                scale  = bone_scale[axis]
-                adjust = bone_base[axis]
-                for frame_idx in range(seq.num_frames):
-                    real_val = raw_values[frame_idx] * scale + adjust
-                    _set_anim_value(blend.frames[frame_idx], bone_idx, axis, real_val)
-
+        blend = Blend()
+        blend.positions = anim_data[:, :, :3]   # (num_frames, num_bones, 3)
+        blend.rotations = anim_data[:, :, 3:]   # (num_frames, num_bones, 3)
         blends.append(blend)
+
     return blends
 
-
-def _set_anim_value(frame: AnimationFrame, bone_idx: int, axis: int, value: float) -> None:
-    """Write a decoded animation value into the correct frame field."""
-    if axis == 0:   frame.positions[bone_idx].x = value
-    elif axis == 1: frame.positions[bone_idx].y = value
-    elif axis == 2: frame.positions[bone_idx].z = value
-    elif axis == 3: frame.rotations[bone_idx].x = value
-    elif axis == 4: frame.rotations[bone_idx].y = value
-    elif axis == 5: frame.rotations[bone_idx].z = value
-
-
-def _read_rle_values(br: BinaryReader, num_frames: int) -> List[int]:
+def _read_rle_values(br: BinaryReader, num_frames: int) -> np.ndarray:
     """
     Read RLE-compressed animation values (GoldSrc format).
-
-    Each run header is 2 bytes:
-      byte 0  = valid  (number of distinct values stored)
-      byte 1  = total  (total frames this run covers)
-    Followed by `valid` signed 16-bit values.
-    Frames beyond `valid` repeat the last value.
+    Returns a numpy array of int16 values, length num_frames.
     """
-    values = [0] * num_frames
+    values = np.empty(num_frames, dtype=np.float32)
     frame_idx = 0
-
     while frame_idx < num_frames:
         valid = br.u8()
         total = br.u8()
-
         if total == 0:
             break
-
         run_vals = [br.i16() for _ in range(valid)]
-
-        for j in range(total):
-            if frame_idx >= num_frames:
-                break
-            values[frame_idx] = run_vals[min(j, valid - 1)]
-            frame_idx += 1
-
+        end = min(frame_idx + total, num_frames)
+        count = end - frame_idx
+        if count <= 0:
+            break
+        # fill with run_vals, clamping index to valid-1
+        indices = np.minimum(np.arange(count), valid - 1)
+        values[frame_idx:end] = np.array(run_vals, dtype=np.float32)[indices]
+        frame_idx = end
     return values
 
 
@@ -1107,21 +1082,23 @@ def _read_triangles(
     vertex_bones: List[int],
     normals: List[Vector3],
     normal_bones: List[int],
-) -> List[MeshVertex]:
+) -> dict:
     """
-    Decode triangle strips and fans into a flat list of triangles (3 verts each).
-    type_val > 0  => triangle strip
-    type_val < 0  => triangle fan
-    type_val == 0 => end of list
+    Returns a dict of numpy arrays instead of a list of MeshVertex dataclasses.
     """
-    mesh_verts: List[MeshVertex] = []
-    br.seek(mesh.triangle_index)
+    # Pre-convert input lists to numpy arrays once
+    verts_arr  = np.array([(v.x, v.y, v.z) for v in vertices],  dtype=np.float32)
+    norms_arr  = np.array([(n.x, n.y, n.z) for n in normals],   dtype=np.float32)
+    vbones_arr = np.array(vertex_bones, dtype=np.int32)
+    nbones_arr = np.array(normal_bones, dtype=np.int32)
 
+    vi_list, ni_list, s_list, t_list = [], [], [], []
+
+    br.seek(mesh.triangle_index)
     while True:
         type_val = br.i16()
         if type_val == 0:
             break
-
         fan    = type_val < 0
         length = abs(type_val)
         point_data = [br.i16() for _ in range(4 * length)]
@@ -1133,19 +1110,22 @@ def _read_triangles(
                 indices = [i + 1, i, i + 2]
             else:
                 indices = [i, i + 1, i + 2]
-
             for idx in indices:
-                vi   = point_data[idx * 4 + 0]
-                ni   = point_data[idx * 4 + 1]
-                s    = point_data[idx * 4 + 2]
-                t    = point_data[idx * 4 + 3]
+                vi_list.append(point_data[idx * 4 + 0])
+                ni_list.append(point_data[idx * 4 + 1])
+                s_list.append( point_data[idx * 4 + 2])
+                t_list.append( point_data[idx * 4 + 3])
 
-                mv = MeshVertex()
-                mv.vertex_bone = vertex_bones[vi]
-                mv.normal_bone = normal_bones[ni]
-                mv.vertex      = vertices[vi]
-                mv.normal      = normals[ni]
-                mv.texture     = Vector2(s, t)
-                mesh_verts.append(mv)
+    vi_arr = np.array(vi_list, dtype=np.int32)
+    ni_arr = np.array(ni_list, dtype=np.int32)
 
-    return mesh_verts
+    return {
+        "positions":    verts_arr[vi_arr],           # (N, 3)
+        "normals":      norms_arr[ni_arr],            # (N, 3)
+        "vertex_bones": vbones_arr[vi_arr],           # (N,)
+        "normal_bones": nbones_arr[ni_arr],           # (N,)
+        "uvs":          np.column_stack([             # (N, 2)
+                            np.array(s_list, dtype=np.float32),
+                            np.array(t_list, dtype=np.float32),
+                        ]),
+    }

@@ -224,11 +224,11 @@ class Camera:
                 case (ObjectField.Origin, origin):
                     self.origin = origin
                     location = origin * self.scale
-                    self.fcurves["location"].insert(blender_frame, location)
+                    self.fcurves["location"].insert_vector(blender_frame, location)
 
                 case (ObjectField.Angles, angles):
                     angles = goldsrc_to_blender_angles_camera(angles)
-                    self.fcurves["rotation_euler"].insert(blender_frame, angles)
+                    self.fcurves["rotation_euler"].insert_vector(blender_frame, angles)
 
                 case (ObjectField.Fov, fov):
                     self.fcurves["lens"].insert(
@@ -427,6 +427,15 @@ class StudioModel:
             bone_fcurves.location.flush()
             bone_fcurves.rotation_quaternion.flush()
 
+STUDIO_X = 0x0001
+STUDIO_Y = 0x0002
+STUDIO_Z = 0x0004
+STUDIO_XR = 0x0008
+STUDIO_YR = 0x0010
+STUDIO_ZR = 0x0020
+STUDIO_TYPES = 0x7FFF
+STUDIO_RLOOP = 0x8000
+
 class Entity:
     prev_origin: Optional[Vector] = None
     prev_angles: Optional[Vector] = None
@@ -595,7 +604,7 @@ class Entity:
                         rendercolor = (1.0, 1.0, 1.0)
                     else:
                         rendercolor = (rendercolor[0] / 255.0, rendercolor[1] / 255.0, rendercolor[2] / 255.0)
-                    self.obj_fcurves["rendercolor"].insert(blender_frame, rendercolor)
+                    self.obj_fcurves["rendercolor"].insert_vector(blender_frame, rendercolor)
 
                 case (ObjectField.RenderFx, renderfx):
                     self.renderfx = renderfx
@@ -645,14 +654,14 @@ class Entity:
 
         if self.prev_origin != self.origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert(blender_frame, location)
+            self.obj_fcurves["location"].insert_vector(blender_frame, location)
             self.prev_origin = self.origin.copy()
 
         if self.prev_angles != self.angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
             # GoldSrc inverts the y rotation for some reason...
             rotation_euler[1] = -rotation_euler[1]
-            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
+            self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
             self.prev_angles = self.angles.copy()
 
     # R_DrawSpriteModel
@@ -665,7 +674,7 @@ class Entity:
 
         if self.prev_origin != self.origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert(blender_frame, location)
+            self.obj_fcurves["location"].insert_vector(blender_frame, location)
             self.prev_origin = self.origin
 
         if self.prev_scale != scale:
@@ -982,9 +991,9 @@ class Entity:
         self.studio_render_model(blender_frame, model, studio_model, bone_transform)
 
         location = origin * self.blender_scale
-        self.obj_fcurves["location"].insert(blender_frame, location)
+        self.obj_fcurves["location"].insert_vector(blender_frame, location)
         rotation_euler = goldsrc_to_blender_angles(angles)
-        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
+        self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
 
         if self.weaponmodel is not None:
             weaponmodel = cl.get_model_by_index(self.weaponmodel)
@@ -1110,8 +1119,8 @@ class Entity:
             matrix_basis = bone_local_rest_matrix_inverse @ animated_local
             location, quaternion, _ = matrix_basis.decompose()
 
-            bone_fcurves.location.insert(blender_frame, location)
-            bone_fcurves.rotation_quaternion.insert(blender_frame, quaternion)
+            bone_fcurves.location.insert_vector(blender_frame, location) # type: ignore
+            bone_fcurves.rotation_quaternion.insert_quaternion(blender_frame, quaternion) # type: ignore
 
     # R_StudioDrawModel
     def studio_draw_model(self, blender_frame: int, cl: Cl, mod: Mod):
@@ -1139,10 +1148,10 @@ class Entity:
         self.studio_render_model(blender_frame, self.model, self.studio_model, bone_transform)
 
         location = origin * self.blender_scale
-        self.obj_fcurves["location"].insert(blender_frame, location)
+        self.obj_fcurves["location"].insert_vector(blender_frame, location)
 
         rotation_euler = goldsrc_to_blender_angles(angles)
-        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
+        self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
 
     # R_StudioPlayerBlend
     def studio_player_blend(self, sequence: Sequence, pitch: float) -> tuple[int, float]:
@@ -1168,7 +1177,7 @@ class Entity:
 
         for bc in model.mdl.bone_controllers:
             if bc.index <= 3:
-                if bc.type & SequenceMotionFlags.RLOOP:
+                if bc.type & STUDIO_RLOOP:
                     if abs(controller1[bc.index] - controller2[bc.index]) > 128:
                         a = (controller1[bc.index] + 128) % 256
                         b = (controller2[bc.index] + 128) % 256
@@ -1185,8 +1194,8 @@ class Entity:
                     value = 1.0
                 value = (1.0 - value) * bc.start + value * bc.end
 
-            axis = bc.type & SequenceMotionFlags.TYPES
-            if axis in (SequenceMotionFlags.XR, SequenceMotionFlags.YR, SequenceMotionFlags.ZR):
+            axis = bc.type & STUDIO_TYPES
+            if axis in (STUDIO_XR, STUDIO_YR, STUDIO_ZR):
                 adj.append(value * (math.pi / 180.0))
             else:
                 adj.append(value)
@@ -1242,69 +1251,66 @@ class Entity:
             f = 0.0
         elif f < -0.01:
             f = -0.01
-
         frame: int = int(f)
         dadt: float = self.studio_estimate_interpolant(cl)
         s: float = f - frame
-
         adj = self.studio_calc_bone_adj(model, dadt, self.controller, self.prevcontroller, self.mouthopen)
 
-        num_frames: int = len(anim.frames)
-        frame0 = anim.frames[min(frame, num_frames - 1)]
-        frame1 = anim.frames[min(frame + 1, num_frames - 1)]
+        num_frames = anim.positions.shape[0]
+        f0 = min(frame,     num_frames - 1)
+        f1 = min(frame + 1, num_frames - 1)
 
-        pos: list[Vector] = []
-        q: list[Quaternion] = []
+        # Shape: (num_bones, 3)
+        p0 = anim.positions[f0].tolist()  # list of [x, y, z]
+        p1 = anim.positions[f1].tolist()
+        r0 = anim.rotations[f0].tolist()
+        r1 = anim.rotations[f1].tolist()
 
-        for bone_idx in range(len(model.mdl.bones)):
-            p0 = frame0.positions[bone_idx]
-            p1 = frame1.positions[bone_idx]
-            px: float = p0.x * (1.0 - s) + p1.x * s
-            py: float = p0.y * (1.0 - s) + p1.y * s
-            pz: float = p0.z * (1.0 - s) + p1.z * s
+        num_bones = len(model.mdl.bones)
+        pos: list[Vector]     = []
+        q:   list[Quaternion] = []
 
-            r0 = frame0.rotations[bone_idx]
-            r1 = frame1.rotations[bone_idx]
-            q1 = Euler((r0.x, r0.y, r0.z), 'XYZ').to_quaternion()
-            q2 = Euler((r1.x, r1.y, r1.z), 'XYZ').to_quaternion()
+        for bone_idx in range(num_bones):
+            p0b = p0[bone_idx]
+            p1b = p1[bone_idx]
+            px = p0b[0] * (1.0 - s) + p1b[0] * s
+            py = p0b[1] * (1.0 - s) + p1b[1] * s
+            pz = p0b[2] * (1.0 - s) + p1b[2] * s
+
+            q1 = Euler(r0[bone_idx], 'XYZ').to_quaternion()
+            q2 = Euler(r1[bone_idx], 'XYZ').to_quaternion()
             if q1.dot(q2) < 0:
                 q2 = -q2 # type: ignore
             qr = q1.slerp(q2, s)
 
             for adj_idx, bc in enumerate(model.mdl.bone_controllers):
                 if bc.bone == bone_idx:
-                    axis = bc.type & SequenceMotionFlags.TYPES
-                    if axis == SequenceMotionFlags.XR:
+                    axis = bc.type & STUDIO_TYPES
+                    if axis == STUDIO_XR:
                         qr = qr @ Euler((adj[adj_idx], 0.0, 0.0), 'XYZ').to_quaternion()
-                    elif axis == SequenceMotionFlags.YR:
+                    elif axis == STUDIO_YR:
                         qr = qr @ Euler((0.0, adj[adj_idx], 0.0), 'XYZ').to_quaternion()
-                    elif axis == SequenceMotionFlags.ZR:
+                    elif axis == STUDIO_ZR:
                         qr = qr @ Euler((0.0, 0.0, adj[adj_idx]), 'XYZ').to_quaternion()
-                    elif axis == SequenceMotionFlags.X:
+                    elif axis == STUDIO_X:
                         px += adj[adj_idx]
-                    elif axis == SequenceMotionFlags.Y:
+                    elif axis == STUDIO_Y:
                         py += adj[adj_idx]
-                    elif axis == SequenceMotionFlags.Z:
+                    elif axis == STUDIO_Z:
                         pz += adj[adj_idx]
 
             pos.append(Vector((px, py, pz)))
             q.append(qr)
 
-        if sequence.motion_type & SequenceMotionFlags.X:
-            pos[sequence.motion_bone].x = 0.0
-        if sequence.motion_type & SequenceMotionFlags.Y:
-            pos[sequence.motion_bone].y = 0.0
-        if sequence.motion_type & SequenceMotionFlags.Z:
-            pos[sequence.motion_bone].z = 0.0
-
-        # there is a calculation but it's always set to 0...
-        s = 0.0
-        if sequence.motion_type & SequenceMotionFlags.LX:
-            pos[sequence.motion_bone].x += s * sequence.linear_movement.x
-        if sequence.motion_type & SequenceMotionFlags.LY:
-            pos[sequence.motion_bone].y += s * sequence.linear_movement.y
-        if sequence.motion_type & SequenceMotionFlags.LZ:
-            pos[sequence.motion_bone].z += s * sequence.linear_movement.z
+        motion_bone_pos = pos[sequence.motion_bone]
+        if sequence.motion_type & STUDIO_X:  motion_bone_pos.x = 0.0
+        if sequence.motion_type & STUDIO_Y:  motion_bone_pos.y = 0.0
+        if sequence.motion_type & STUDIO_Z:  motion_bone_pos.z = 0.0
+        # s is always 0.0 so linear movement terms are no-ops, kept for correctness
+        # s = 0.0
+        # if sequence.motion_type & SequenceMotionFlags.LX: motion_bone_pos.x += s * sequence.linear_movement.x
+        # if sequence.motion_type & SequenceMotionFlags.LY: motion_bone_pos.y += s * sequence.linear_movement.y
+        # if sequence.motion_type & SequenceMotionFlags.LZ: motion_bone_pos.z += s * sequence.linear_movement.z
 
         return pos, q
 
@@ -1546,11 +1552,11 @@ class ViewmodelEntity(Entity):
 
         if self.origin != self.prev_origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert(blender_frame, location)
+            self.obj_fcurves["location"].insert_vector(blender_frame, location)
 
         if self.angles != self.prev_angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
-            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
+            self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
 
 
 class BeamType(IntEnum):
@@ -1821,7 +1827,7 @@ class Beam:
             self.prev_segments = self.segments
 
         if self.prev_color != self.color:
-            self.obj_fcurves["color"].insert(blender_frame, self.color)
+            self.obj_fcurves["color"].insert_vector(blender_frame, self.color)
             self.prev_color = self.color
 
         if self.prev_amplitude != self.amplitude:
@@ -1847,12 +1853,12 @@ class Beam:
 
         if self.prev_source != self.source:
             source = self.source * self.blender_scale
-            self.obj_fcurves["source"].insert(blender_frame, source)
+            self.obj_fcurves["source"].insert_vector(blender_frame, source)
             self.prev_source = self.source.copy()
 
         if self.prev_delta != self.delta:
             delta = self.delta * self.blender_scale
-            self.obj_fcurves["delta"].insert(blender_frame, delta)
+            self.obj_fcurves["delta"].insert_vector(blender_frame, delta)
             self.prev_delta = self.delta.copy()
 
         match self.type:
@@ -2179,8 +2185,8 @@ class Gsr:
                     elif entity.model.type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
                     elif entity.model.type == ModelType.SPRITE:
-                        # if entity.body:
-                        #     print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
+                        if entity.body:
+                            print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
                 # R_DrawTEntitiesOnList
                 else:
@@ -2190,8 +2196,8 @@ class Gsr:
                     if entity.model.type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
                     elif entity.model.type == ModelType.SPRITE:
-                        # if entity.body:
-                        #     print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
+                        if entity.body:
+                            print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
 
             # R_DrawParticles
@@ -2211,7 +2217,7 @@ class Gsr:
             wm.progress_update(self.br.tell())
 
         # I don't really want or need this in a separate function but pyright forces me to :)
-        self.flush_keyframes(self.frame - 1)
+        self.flush_keyframes()
 
         scene.frame_current = 1
         scene.frame_end = self.frame - 1
@@ -2300,7 +2306,7 @@ class Gsr:
                 transparent_bsdf_node.location = x, y + 100
                 links.new(transparent_bsdf_node.outputs[0], output_node.inputs[0])
 
-    def flush_keyframes(self, total_frames: int):
+    def flush_keyframes(self):
         for lightstyle in self.lightstyle_id_map.values():
             for (fcurve, _) in lightstyle:
                 fcurve.flush()

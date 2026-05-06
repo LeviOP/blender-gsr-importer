@@ -2,34 +2,40 @@ from typing import Iterable, Optional
 import bpy
 from bpy_extras import anim_utils
 from mathutils import Quaternion, Vector
+from array import array
 
 CONSTANT = bpy.types.Keyframe.bl_rna.properties['interpolation'].enum_items['CONSTANT'].value # type: ignore
 
 class FCurveBuffer:
-    __slots__ = ('_fcurve', '_frames', '_values')
+    __slots__ = ('_fcurve', '_co', '_append')
 
     def __init__(self, fcurve: bpy.types.FCurve):
         self._fcurve = fcurve
-        self._frames: list[float] = []
-        self._values: list[float] = []
+        # 'f' = C float (32-bit). Blender accepts floats here.
+        self._co = array('f')
+        self._append = self._co.append
 
-    def insert(self, frame: int, value: float) -> None:
-        self._frames.append(frame)
-        self._values.append(value)
+    def insert(self, frame: float, value: float) -> None:
+        # interleaved: [frame0, value0, frame1, value1, ...]
+        self._append(frame)
+        self._append(value)
 
     def flush(self) -> None:
-        n = len(self._frames)
+        n = len(self._co) // 2
         if not n:
             return
+
         kp: bpy.types.FCurveKeyframePoints = self._fcurve.keyframe_points
         kp.add(n)
-        # foreach_set expects a flat [co_x0, co_y0, co_x1, co_y1, ...] list
-        flat = [v for pair in zip(self._frames, self._values) for v in pair]
-        kp.foreach_set("co", flat)
+
+        # array('f') is already a flat contiguous buffer
+        kp.foreach_set("co", self._co)
+
+        # interpolation still needs a Python sequence
         kp.foreach_set("interpolation", [CONSTANT] * n)
+
         self._fcurve.update()
-        self._frames.clear()
-        self._values.clear()
+        self._co.clear()
 
 class FCurveBufferGroup:
     __slots__ = ('_buffers',)
@@ -40,16 +46,27 @@ class FCurveBufferGroup:
     def __getitem__(self, index: int) -> FCurveBuffer:
         return self._buffers[index]
 
-    # blender types don't report that vector or quaternion are iterable, but they are.
-    # better to do the type "hacking" here than at every call site
-    def insert(self, frame: int, values: float | Iterable[float] | Vector | Quaternion) -> None:
-        if isinstance(values, (int, float)):
-            iterable = (values,) * len(self._buffers)
-        else:
-            iterable = values
-
-        for buf, value in zip(self._buffers, iterable): # type: ignore
+    def insert(self, frame: int, value: float):
+        for buf in self._buffers: # type: ignore
             buf.insert(frame, value)
+
+    def insert_vector(self, frame: float, vector: Vector):
+        buffers = self._buffers
+        for i in range(3):
+            buf = buffers[i]
+            value = vector[i]
+            append = buf._append
+            append(frame)
+            append(value)
+
+    def insert_quaternion(self, frame: float, quaternion: Quaternion):
+        buffers = self._buffers
+        for i in range(4):
+            buf = buffers[i]
+            value = quaternion[i]
+            append = buf._append
+            append(frame)
+            append(value)
 
     def flush(self) -> None:
         for buffer in self._buffers:
