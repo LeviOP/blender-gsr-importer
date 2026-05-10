@@ -122,6 +122,7 @@ class Blend:
     positions: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
     rotations: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
 
+
 class SequenceFlags(IntFlag):
     LOOPING = 0x0001
 

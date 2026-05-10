@@ -16,7 +16,7 @@ from .binary_reader import BinaryReader
 from .filesystem import FileSystem
 from .import_bsp import Bsp
 from .model import Model, Mod, ModelType
-from .mdl import Blend, Sequence, SequenceFlags, SequenceMotionFlags
+from .mdl import Blend, Sequence
 from .spr import SpriteType
 from .wad import Wad
 from .tga import Tga
@@ -334,6 +334,8 @@ class StudioModel:
 
         self.bone_fcurves_map: dict[str, BoneFCurves] = {}
         self.bone_local_rest_matrix_inverse_map: dict[str, Matrix] = {}
+        self.prev_bone_matrix_basis: dict[str, Matrix] = {}
+        self.prev_body: Optional[int] = None
 
         armature_data: bpy.types.Armature = model_obj.data # type: ignore
         for pose_bone in model_obj.pose.bones: # type: ignore
@@ -435,6 +437,9 @@ STUDIO_YR = 0x0010
 STUDIO_ZR = 0x0020
 STUDIO_TYPES = 0x7FFF
 STUDIO_RLOOP = 0x8000
+STUDIO_LOOPING = 0x0001
+
+MAXSTUDIOBONECONTROLLERS = 8
 
 class Entity:
     prev_origin: Optional[Vector] = None
@@ -1096,14 +1101,15 @@ class Entity:
         studio_model: StudioModel,
         bone_transform: dict[int, Matrix],
     ):
-        # maybe this can be optimized? (only check when model changes, R_StudioChangePlayerModel?)
-        for body_part in model.mdl.body_parts:
-            selected_idx = (self.body // body_part.base) % body_part.num_models
-            for model_idx, body_part_model in enumerate(body_part.models):
-                active = (model_idx == selected_idx)
-                body_part = studio_model.body_parts[f"{studio_model.object.name}_{body_part_model.name}"]
-                if body_part.prev_active != active:
-                    body_part.fcurve.insert(blender_frame, active)
+        if self.body != studio_model.prev_body:
+            for body_part in model.mdl.body_parts:
+                selected_idx = (self.body // body_part.base) % body_part.num_models
+                for model_idx, body_part_model in enumerate(body_part.models):
+                    active = (model_idx == selected_idx)
+                    body_part = studio_model.body_parts[f"{studio_model.object.name}_{body_part_model.name}"]
+                    if body_part.prev_active != active:
+                        body_part.fcurve.insert(blender_frame, active)
+            studio_model.prev_body = self.body
 
         for bone_idx, bone in enumerate(model.mdl.bones):
             bone_fcurves = studio_model.bone_fcurves_map.get(bone.name)
@@ -1117,10 +1123,16 @@ class Entity:
                 animated_local = bone_transform[bone.parent].inverted() @ bone_transform[bone_idx]
 
             matrix_basis = bone_local_rest_matrix_inverse @ animated_local
-            location, quaternion, _ = matrix_basis.decompose()
 
-            bone_fcurves.location.insert_vector(blender_frame, location) # type: ignore
-            bone_fcurves.rotation_quaternion.insert_quaternion(blender_frame, quaternion) # type: ignore
+            prev = studio_model.prev_bone_matrix_basis.get(bone.name)
+            if prev is not None and matrix_basis == prev:
+                continue
+
+            studio_model.prev_bone_matrix_basis[bone.name] = matrix_basis.copy()
+
+            location, quaternion, _ = matrix_basis.decompose()
+            bone_fcurves.location.insert_vector(blender_frame, location)
+            bone_fcurves.rotation_quaternion.insert_quaternion(blender_frame, quaternion)
 
     # R_StudioDrawModel
     def studio_draw_model(self, blender_frame: int, cl: Cl, mod: Mod):
@@ -1173,7 +1185,7 @@ class Entity:
 
     # R_StudioCalcBoneAdj
     def studio_calc_bone_adj(self, model: Model, dadt: float, controller1: list[int], controller2: list[int], mouthopen: int) -> list[float]:
-        adj: list[float] = []
+        adj: list[float] = [0.0] * MAXSTUDIOBONECONTROLLERS
 
         for bc in model.mdl.bone_controllers:
             if bc.index <= 3:
@@ -1216,7 +1228,7 @@ class Entity:
 
         f += dfdt
 
-        if sequence.flags & SequenceFlags.LOOPING:
+        if sequence.flags & STUDIO_LOOPING:
             if sequence.num_frames > 1:
                 f -= int(f / (sequence.num_frames - 1)) * (sequence.num_frames - 1)
             if f < 0:
