@@ -1940,16 +1940,12 @@ def animated_texture_1_node_group():
     group_output = animated_texture_1.nodes.new("NodeGroupOutput")
     group_output.name = "Group Output"
     group_output.is_active_output = True
+    group_output.inputs[1].hide = True
 
     # Node Group Input
     group_input = animated_texture_1.nodes.new("NodeGroupInput")
     group_input.name = "Group Input"
-
-    # Node Attribute.001
-    attribute_001 = animated_texture_1.nodes.new("ShaderNodeAttribute")
-    attribute_001.name = "Attribute.001"
-    attribute_001.attribute_name = "time"
-    attribute_001.attribute_type = 'VIEW_LAYER'
+    group_input.outputs[2].hide = True
 
     # Node Math
     math = animated_texture_1.nodes.new("ShaderNodeMath")
@@ -2053,10 +2049,15 @@ def animated_texture_1_node_group():
     texture_coordinate_001.outputs[5].hide = True
     texture_coordinate_001.outputs[6].hide = True
 
+    # Node Value
+    value = animated_texture_1.nodes.new("ShaderNodeGroup")
+    value.name = "Value"
+    value.node_tree = ensure_group("Shader Engine State")
+    value.show_options = False
+
     # Set locations
     animated_texture_1.nodes["Group Output"].location = (720.0, -120.0)
     animated_texture_1.nodes["Group Input"].location = (-560.0, 40.0)
-    animated_texture_1.nodes["Attribute.001"].location = (-880.0, -120.0)
     animated_texture_1.nodes["Math"].location = (-400.0, -120.0)
     animated_texture_1.nodes["Separate XYZ.001"].location = (-80.0, -140.0)
     animated_texture_1.nodes["Combine XYZ"].location = (560.0, -120.0)
@@ -2072,6 +2073,7 @@ def animated_texture_1_node_group():
     animated_texture_1.nodes["Math.008"].location = (-720.0, -120.0)
     animated_texture_1.nodes["Math.009"].location = (-560.0, -120.0)
     animated_texture_1.nodes["Texture Coordinate.001"].location = (-240.0, -160.0)
+    animated_texture_1.nodes["Value"].location = (-880.0, -180.0)
 
     # Set dimensions
     animated_texture_1.nodes["Group Output"].width  = 140.0
@@ -2079,9 +2081,6 @@ def animated_texture_1_node_group():
 
     animated_texture_1.nodes["Group Input"].width  = 140.0
     animated_texture_1.nodes["Group Input"].height = 100.0
-
-    animated_texture_1.nodes["Attribute.001"].width  = 140.0
-    animated_texture_1.nodes["Attribute.001"].height = 100.0
 
     animated_texture_1.nodes["Math"].width  = 140.0
     animated_texture_1.nodes["Math"].height = 100.0
@@ -2127,6 +2126,9 @@ def animated_texture_1_node_group():
 
     animated_texture_1.nodes["Texture Coordinate.001"].width  = 140.0
     animated_texture_1.nodes["Texture Coordinate.001"].height = 100.0
+
+    animated_texture_1.nodes["Value"].width  = 140.0
+    animated_texture_1.nodes["Value"].height = 100.0
 
 
     # Initialize animated_texture_1 links
@@ -2221,11 +2223,6 @@ def animated_texture_1_node_group():
         animated_texture_1.nodes["Math"].outputs[0],
         animated_texture_1.nodes["Mix"].inputs[3]
     )
-    # attribute_001.Factor -> math_008.Value
-    animated_texture_1.links.new(
-        animated_texture_1.nodes["Attribute.001"].outputs[2],
-        animated_texture_1.nodes["Math.008"].inputs[0]
-    )
     # math_008.Value -> math_009.Value
     animated_texture_1.links.new(
         animated_texture_1.nodes["Math.008"].outputs[0],
@@ -2245,6 +2242,11 @@ def animated_texture_1_node_group():
     animated_texture_1.links.new(
         animated_texture_1.nodes["Texture Coordinate.001"].outputs[2],
         animated_texture_1.nodes["Separate XYZ.001"].inputs[0]
+    )
+    # value.Time -> math_008.Value
+    animated_texture_1.links.new(
+        animated_texture_1.nodes["Value"].outputs[0],
+        animated_texture_1.nodes["Math.008"].inputs[0]
     )
 
     return animated_texture_1
@@ -2794,6 +2796,7 @@ def glow_sprite_1_node_group():
 
     return glow_sprite_1
 
+# CL_FxBlend
 def fxblend_1_node_group():
     """Initialize FxBlend node group"""
     fxblend_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "FxBlend")
@@ -2872,13 +2875,6 @@ def fxblend_1_node_group():
     math_010.name = "Math.010"
     math_010.operation = 'SINE'
     math_010.use_clamp = False
-
-    # Node Attribute.007
-    attribute_007 = fxblend_1.nodes.new("ShaderNodeAttribute")
-    attribute_007.label = "time"
-    attribute_007.name = "Attribute.007"
-    attribute_007.attribute_name = "time"
-    attribute_007.attribute_type = 'VIEW_LAYER'
 
     # Node Math.011
     math_011 = fxblend_1.nodes.new("ShaderNodeMath")
@@ -3196,6 +3192,12 @@ def fxblend_1_node_group():
     group_output.name = "Group Output"
     group_output.is_active_output = True
 
+    # Node Engine State
+    engine_state = fxblend_1.nodes.new("ShaderNodeGroup")
+    engine_state.name = "Engine State"
+    engine_state.node_tree = ensure_group("Shader Engine State")
+    engine_state.show_options = False
+
     # Set locations
     fxblend_1.nodes["Object Info.001"].location = (-1060.0, 320.0)
     fxblend_1.nodes["Math.001"].location = (-900.0, 320.0)
@@ -3205,7 +3207,6 @@ def fxblend_1_node_group():
     fxblend_1.nodes["Math.004"].location = (420.0, 220.0)
     fxblend_1.nodes["Attribute.006"].location = (-580.0, 160.0)
     fxblend_1.nodes["Math.010"].location = (-60.0, 220.0)
-    fxblend_1.nodes["Attribute.007"].location = (-580.0, 500.0)
     fxblend_1.nodes["Math.011"].location = (-380.0, 220.0)
     fxblend_1.nodes["Math.012"].location = (-220.0, 220.0)
     fxblend_1.nodes["Math.013"].location = (100.0, 220.0)
@@ -3258,6 +3259,7 @@ def fxblend_1_node_group():
     fxblend_1.nodes["Mix.003"].location = (900.0, -140.0)
     fxblend_1.nodes["Mix.004"].location = (1060.0, -320.0)
     fxblend_1.nodes["Group Output"].location = (1220.0, -320.0)
+    fxblend_1.nodes["Engine State"].location = (-580.0, 380.0)
 
     # Set dimensions
     fxblend_1.nodes["Object Info.001"].width  = 140.0
@@ -3283,9 +3285,6 @@ def fxblend_1_node_group():
 
     fxblend_1.nodes["Math.010"].width  = 140.0
     fxblend_1.nodes["Math.010"].height = 100.0
-
-    fxblend_1.nodes["Attribute.007"].width  = 140.0
-    fxblend_1.nodes["Attribute.007"].height = 100.0
 
     fxblend_1.nodes["Math.011"].width  = 140.0
     fxblend_1.nodes["Math.011"].height = 100.0
@@ -3443,6 +3442,9 @@ def fxblend_1_node_group():
     fxblend_1.nodes["Group Output"].width  = 140.0
     fxblend_1.nodes["Group Output"].height = 100.0
 
+    fxblend_1.nodes["Engine State"].width  = 140.0
+    fxblend_1.nodes["Engine State"].height = 100.0
+
 
     # Initialize fxblend_1 links
 
@@ -3485,11 +3487,6 @@ def fxblend_1_node_group():
     fxblend_1.links.new(
         fxblend_1.nodes["Math.013"].outputs[0],
         fxblend_1.nodes["Math.014"].inputs[0]
-    )
-    # attribute_007.Factor -> reroute.Input
-    fxblend_1.links.new(
-        fxblend_1.nodes["Attribute.007"].outputs[2],
-        fxblend_1.nodes["Reroute"].inputs[0]
     )
     # math_003.Value -> reroute_001.Input
     fxblend_1.links.new(
@@ -3815,6 +3812,11 @@ def fxblend_1_node_group():
     fxblend_1.links.new(
         fxblend_1.nodes["Mix.004"].outputs[0],
         fxblend_1.nodes["Group Output"].inputs[0]
+    )
+    # engine_state.Time -> reroute.Input
+    fxblend_1.links.new(
+        fxblend_1.nodes["Engine State"].outputs[0],
+        fxblend_1.nodes["Reroute"].inputs[0]
     )
 
     return fxblend_1
@@ -5154,7 +5156,7 @@ def camera_basis_1_node_group():
 
     return camera_basis_1
 
-def engine_state_1_node_group():
+def engine_state_1_node_group_geometry():
     """Initialize Engine State node group"""
     engine_state_1 = bpy.data.node_groups.new(type='GeometryNodeTree', name="Engine State")
 
@@ -5191,7 +5193,7 @@ def engine_state_1_node_group():
     time_driver_var.type = "SINGLE_PROP"
     time_driver_var.targets[0].id_type = "SCENE"
     time_driver_var.targets[0].id = bpy.context.scene
-    time_driver_var.targets[0].data_path = 'view_layers["ViewLayer"]["time"]'
+    time_driver_var.targets[0].data_path = '["time"]'
 
     time_driver.expression = "time"
 
@@ -5222,6 +5224,74 @@ def engine_state_1_node_group():
     )
 
     return engine_state_1
+
+def engine_state_1_node_group_shader():
+    """Initialize Engine State node group"""
+    engine_state_1 = bpy.data.node_groups.new(type = 'ShaderNodeTree', name = "Engine State")
+
+    engine_state_1.color_tag = 'INPUT'
+    engine_state_1.description = ""
+    engine_state_1.default_group_node_width = 140
+    # engine_state_1 interface
+
+    # Socket Time
+    time_socket = engine_state_1.interface.new_socket(name="Time", in_out='OUTPUT', socket_type='NodeSocketFloat')
+    time_socket.default_value = 0.0
+    time_socket.min_value = -3.4028234663852886e+38
+    time_socket.max_value = 3.4028234663852886e+38
+    time_socket.subtype = 'NONE'
+    time_socket.attribute_domain = 'POINT'
+    time_socket.default_input = 'VALUE'
+    time_socket.structure_type = 'AUTO'
+
+    # Initialize engine_state_1 nodes
+
+    # Node Value
+    value = engine_state_1.nodes.new("ShaderNodeValue")
+    value.name = "Value"
+
+    value.outputs[0].default_value = 0.0
+
+    time_driver = value.outputs[0].driver_add("default_value").driver
+    time_driver.type = "SCRIPTED"
+
+    time_driver_var = time_driver.variables.new()
+    time_driver_var.name = "time"
+    time_driver_var.type = "SINGLE_PROP"
+    time_driver_var.targets[0].id_type = "SCENE"
+    time_driver_var.targets[0].id = bpy.context.scene
+    time_driver_var.targets[0].data_path = '["time"]'
+
+    time_driver.expression = "time"
+
+    # Node Group Output
+    group_output = engine_state_1.nodes.new("NodeGroupOutput")
+    group_output.name = "Group Output"
+    group_output.is_active_output = True
+    group_output.inputs[1].hide = True
+
+    # Set locations
+    engine_state_1.nodes["Value"].location = (40.0, 0.0)
+    engine_state_1.nodes["Group Output"].location = (200.0, 0.0)
+
+    # Set dimensions
+    engine_state_1.nodes["Value"].width  = 140.0
+    engine_state_1.nodes["Value"].height = 100.0
+
+    engine_state_1.nodes["Group Output"].width  = 140.0
+    engine_state_1.nodes["Group Output"].height = 100.0
+
+
+    # Initialize engine_state_1 links
+
+    # value.Value -> group_output.Time
+    engine_state_1.links.new(
+        engine_state_1.nodes["Value"].outputs[0],
+        engine_state_1.nodes["Group Output"].inputs[0]
+    )
+
+    return engine_state_1
+
 
 def vectorma_1_node_group():
     """Initialize VectorMA node group"""
@@ -5463,7 +5533,7 @@ def beamfollow_1_node_group():
     # Node Value.001
     value_001 = beamfollow_1.nodes.new("GeometryNodeGroup")
     value_001.name = "Value.001"
-    value_001.node_tree = ensure_group("Engine State")
+    value_001.node_tree = ensure_group("Geometry Engine State")
     value_001.show_options = False
 
     # Node Compare.001
@@ -5980,7 +6050,7 @@ def beamfollow_1_node_group():
     # Node Value.003
     value_003 = beamfollow_1.nodes.new("GeometryNodeGroup")
     value_003.name = "Value.003"
-    value_003.node_tree = ensure_group("Engine State")
+    value_003.node_tree = ensure_group("Geometry Engine State")
     value_003.show_options = False
 
     # Node Math.010
@@ -7180,7 +7250,8 @@ BUILDERS = {
     "Viewent Modifier": viewent_modifier_1_node_group,
     "ScreenTransform": screentransform_1_node_group,
     "Camera Basis": camera_basis_1_node_group,
-    "Engine State": engine_state_1_node_group,
+    "Geometry Engine State": engine_state_1_node_group_geometry,
+    "Shader Engine State": engine_state_1_node_group_shader,
     "VectorMA": vectorma_1_node_group,
     "BeamFollow": beamfollow_1_node_group,
     "Cull Backface": cull_backface_1_node_group,

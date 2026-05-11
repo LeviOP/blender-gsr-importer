@@ -2,10 +2,11 @@ from enum import IntFlag
 import math
 import os
 from dataclasses import dataclass, field
-from typing import BinaryIO, List, Optional, Dict, Tuple
+from typing import BinaryIO, Optional
 import io
 import bpy
 import numpy as np
+from mathutils import Euler, Quaternion, Vector, Matrix
 
 from .model import Mod
 from . import binary_reader
@@ -64,7 +65,7 @@ class Bone:
     name: str = ""
     parent: int = 0
     flags: int = 0
-    controllers: List[int] = field(default_factory=list)
+    controllers: list[int] = field(default_factory=list)
     position: Vector3 = field(default_factory=Vector3)
     rotation: Vector3 = field(default_factory=Vector3)
     position_scale: Vector3 = field(default_factory=Vector3)
@@ -110,17 +111,17 @@ class Pivot:
     end: int = 0
 
 
-@dataclass
-class AnimationFrame:
-    """Per-frame data: raw (unscaled) animation values for each bone."""
-    positions: List[Vector3] = field(default_factory=list)
-    rotations: List[Vector3] = field(default_factory=list)
+# @dataclass
+# class AnimationFrame:
+#     """Per-frame data: raw (unscaled) animation values for each bone."""
+#     positions: List[Vector3] = field(default_factory=list)
+#     rotations: List[Vector3] = field(default_factory=list)
 
 
 @dataclass
 class Blend:
-    positions: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
-    rotations: np.ndarray = field(default_factory=lambda: np.empty((0, 0, 3), dtype=np.float32))  # (num_frames, num_bones, 3)
+    positions: list[list[list[float]]] = field(default_factory=list)
+    rotation_quats: list[list[Quaternion]] = field(default_factory=list)
 
 
 class SequenceFlags(IntFlag):
@@ -166,18 +167,18 @@ class Sequence:
     max: Vector3 = field(default_factory=Vector3)
     num_blends: int = 0
     animation_index: int = 0
-    blend_type: List[int] = field(default_factory=list)
-    blend_start: List[float] = field(default_factory=list)
-    blend_end: List[float] = field(default_factory=list)
+    blend_type: list[int] = field(default_factory=list)
+    blend_start: list[float] = field(default_factory=list)
+    blend_end: list[float] = field(default_factory=list)
     blend_parent: int = 0
     sequence_group: int = 0
     entry_node: int = 0
     exit_node: int = 0
     node_flags: int = 0
     next_sequence: int = 0
-    blends: List[Blend] = field(default_factory=list)
-    events: List[AnimationEvent] = field(default_factory=list)
-    pivots: List[Pivot] = field(default_factory=list)
+    blends: list[Blend] = field(default_factory=list)
+    events: list[AnimationEvent] = field(default_factory=list)
+    pivots: list[Pivot] = field(default_factory=list)
 
 
 class TextureFlags(IntFlag):
@@ -203,7 +204,7 @@ class Texture:
 
 @dataclass
 class SkinFamily:
-    textures: List[int] = field(default_factory=list)
+    textures: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -240,7 +241,7 @@ class Model:
     normal_index: int = 0
     num_groups: int = 0
     group_index: int = 0
-    meshes: List[Mesh] = field(default_factory=list)
+    meshes: list[Mesh] = field(default_factory=list)
 
 
 @dataclass
@@ -249,7 +250,7 @@ class BodyPart:
     num_models: int = 0
     base: int = 0
     model_index: int = 0
-    models: List[Model] = field(default_factory=list)
+    models: list[Model] = field(default_factory=list)
 
 
 @dataclass
@@ -258,7 +259,7 @@ class Attachment:
     type: int = 0
     bone: int = 0
     origin: Vector3 = field(default_factory=Vector3)
-    vectors: List[Vector3] = field(default_factory=list)
+    vectors: list[Vector3] = field(default_factory=list)
 
 
 @dataclass
@@ -367,11 +368,9 @@ def _blender_material_from_texture(
 
 def _build_bone_transforms(
     armature_obj: 'bpy.types.Object',
-    bones: List['Bone'],
+    bones: list['Bone'],
     scale: float,
-) -> List['mathutils.Matrix']:
-    from mathutils import Euler, Matrix, Vector
-
+) -> list[Matrix]:
     armature = armature_obj.data
 
     bpy.ops.object.mode_set(mode='EDIT')
@@ -416,22 +415,23 @@ def _build_bone_transforms(
 @dataclass
 class Mdl:
     header: Header
-    bones: List[Bone]
-    bone_controllers: List[BoneController]
-    hitboxes: List[Hitbox]
-    sequence_groups: List[SequenceGroup]
-    sequences: List[Sequence]
-    textures: List[Texture]
-    skins: List[SkinFamily]
-    body_parts: List[BodyPart]
-    attachments: List[Attachment]
-    transitions: List[Transition]
+    bones: list[Bone]
+    bone_controllers: list[BoneController]
+    bone_controller_map: dict[int, list[tuple[int, int]]]
+    hitboxes: list[Hitbox]
+    sequence_groups: list[SequenceGroup]
+    sequences: list[Sequence]
+    textures: list[Texture]
+    skins: list[SkinFamily]
+    body_parts: list[BodyPart]
+    attachments: list[Attachment]
+    transitions: list[Transition]
 
     # ── internal Blender cache (not serialised) ────────────────────────────
     # Populated by create_object() on first import; subsequent imports copy
     # the cached armature ID rather than rebuilding it from scratch.
     _armature_cache: Optional['bpy.types.Object']          = field(default=None, repr=False, compare=False)
-    _bone_transforms_cache: Optional[List]                 = field(default=None, repr=False, compare=False)
+    _bone_transforms_cache: Optional[list]                 = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -463,7 +463,7 @@ class Mdl:
 
     def _get_or_build_armature(
             self, scale: float, collection, name: str
-    ) -> Tuple['bpy.types.Object', List]:
+    ) -> tuple[bpy.types.Object, list]:
         """
         Return (armature_obj linked into the scene, bone_transforms).
 
@@ -510,7 +510,7 @@ class Mdl:
     # Mesh helpers
     # ------------------------------------------------------------------
 
-    def _create_body_part_mesh(self, body_part_model: 'Model', armature_obj: 'bpy.types.Object', bone_transforms: List, mod: Mod, name: str, fs: FileSystem, scale: float, collection) -> None:
+    def _create_body_part_mesh(self, body_part_model: 'Model', armature_obj: 'bpy.types.Object', bone_transforms: list, mod: Mod, name: str, fs: FileSystem, scale: float, collection) -> None:
         """
         Build one Blender mesh object for *body_part_model* and parent it to
         *armature_obj*.
@@ -528,21 +528,24 @@ class Mdl:
         obj.parent = armature_obj
 
         # ── collect materials and per-triangle geometry ────────────────────
-        mat_slot:        Dict[int, int] = {}
-        all_positions:   List           = []
-        all_faces:       List           = []
-        all_vert_bone:   List           = []
-        all_mat_indices: List           = []
-        all_uvs:         List           = []   # flat (N*3, 2) in loop order
-        all_normals:     List           = []   # flat (N*3, 3) in loop order
+        mat_slot:        dict[int, int] = {}
+        all_positions:   list           = []
+        all_faces:       list           = []
+        all_vert_bone:   list           = []
+        all_mat_indices: list           = []
+        all_uvs:         list           = []   # flat (N*3, 2) in loop order
+        all_normals:     list           = []   # flat (N*3, 3) in loop order
 
-        # Resolve textures once before the mesh_part loop
+        # R_LoadTextures
         if len(self.textures) == 0:
             texture_file_name = f"{name[:-4]}T.mdl"
             try:
                 model = mod.for_name(texture_file_name, True)
                 textures = model.mdl.textures
             except Exception:
+                # HACKHACK: we have to do this because BB check can cause texture not
+                # to be drawn (therefore not added to mod_known) but it will still be
+                # in cl_visedicts meaning we are going to "draw" it :)))
                 texture_file = fs.open(texture_file_name, "rb")
                 if texture_file is None:
                     raise Exception(f"{texture_file_name} not found")
@@ -569,7 +572,7 @@ class Mdl:
             inv_th = 1.0 / th
             mat_idx = mat_slot[skin_ref]
 
-            data = mesh_part.vertices  # now a dict of numpy arrays from _read_triangles
+            data = mesh_part.vertices
 
             pos   = data["positions"] * scale   # (N, 3)
             norms = data["normals"]             # (N, 3)
@@ -614,7 +617,7 @@ class Mdl:
         uv_layer.data.foreach_set("uv", uv_flat)
 
         # Build bone_groups from numpy array directly
-        bone_groups: Dict[int, List[int]] = {}
+        bone_groups: dict[int, list[int]] = {}
         for vi, bi in enumerate(all_vert_bone):
             bone_groups.setdefault(bi, []).append(vi)
 
@@ -707,17 +710,19 @@ class Mdl:
 # Parser
 # ---------------------------------------------------------------------------
 
+STUDIO_TYPES = 0x7FFF
+
 def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
-    bones: List[Bone] = []
-    bone_controllers: List[BoneController] = []
-    hitboxes: List[Hitbox] = []
-    sequence_groups: List[SequenceGroup] = []
-    sequences: List[Sequence] = []
-    textures: List[Texture] = []
-    skins: List[SkinFamily] = []
-    body_parts: List[BodyPart] = []
-    attachments: List[Attachment] = []
-    transitions: List[Transition] = []
+    bones: list[Bone] = []
+    bone_controllers: list[BoneController] = []
+    hitboxes: list[Hitbox] = []
+    sequence_groups: list[SequenceGroup] = []
+    sequences: list[Sequence] = []
+    textures: list[Texture] = []
+    skins: list[SkinFamily] = []
+    body_parts: list[BodyPart] = []
+    attachments: list[Attachment] = []
+    transitions: list[Transition] = []
 
     # --- Header ---
     header = Header()
@@ -772,6 +777,10 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
         bc.rest  = br.i32()
         bc.index = br.i32()
         bone_controllers.append(bc)
+
+    bone_controller_map: dict[int, list[tuple[int, int]]] = {}
+    for adj_idx, bc in enumerate(bone_controllers):
+        bone_controller_map.setdefault(bc.bone, []).append((adj_idx, bc.type & STUDIO_TYPES))
 
     # --- Hitboxes ---
     br.seek(hitbox_index)
@@ -924,6 +933,7 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
         header=header,
         bones=bones,
         bone_controllers=bone_controllers,
+        bone_controller_map=bone_controller_map,
         hitboxes=hitboxes,
         sequence_groups=sequence_groups,
         sequences=sequences,
@@ -939,66 +949,70 @@ def _parse_mdl(br: BinaryReader, fs: FileSystem) -> Mdl:
 # Animation parsing
 # ---------------------------------------------------------------------------
 
-def _read_animation_blends(br: BinaryReader, seq: Sequence, bones: List[Bone]) -> List['Blend']:
-    """
-    Returns Blend objects where each blend stores positions and rotations
-    as numpy arrays of shape (num_frames, num_bones, 3) instead of
-    per-frame dataclass lists.
-    """
+def _read_animation_blends(br: BinaryReader, seq: Sequence, bones: list[Bone]) -> list[Blend]:
     num_bones     = len(bones)
     num_frames    = seq.num_frames
     axes_per_bone = 6
     anim_pos      = seq.animation_index
-
-    # Pre-build bone scale/base as numpy arrays (num_bones, 6)
-    bone_scale = np.array([
-        [b.position_scale.x, b.position_scale.y, b.position_scale.z,
-         b.rotation_scale.x, b.rotation_scale.y, b.rotation_scale.z]
+    bone_scale = [
+        (b.position_scale.x, b.position_scale.y, b.position_scale.z,
+         b.rotation_scale.x, b.rotation_scale.y, b.rotation_scale.z)
         for b in bones
-    ], dtype=np.float32)  # (num_bones, 6)
-
-    bone_base = np.array([
-        [b.position.x, b.position.y, b.position.z,
-         b.rotation.x, b.rotation.y, b.rotation.z]
+    ]
+    bone_base = [
+        (b.position.x, b.position.y, b.position.z,
+         b.rotation.x, b.rotation.y, b.rotation.z)
         for b in bones
-    ], dtype=np.float32)  # (num_bones, 6)
-
-    blends: List[Blend] = []
-
+    ]
+    blends: list[Blend] = []
     for blend_idx in range(seq.num_blends):
         offsets_start = anim_pos + blend_idx * num_bones * axes_per_bone * 2
-
-        # Shape: (num_frames, num_bones, 6) — axes 0-2 = pos, 3-5 = rot
-        anim_data = np.empty((num_frames, num_bones, 6), dtype=np.float32)
+        positions: list[list[list[float]]] = [[] for _ in range(3)]
+        quats: list[list[Quaternion]] = [[] for _ in range(num_bones)]
 
         for bone_idx in range(num_bones):
             br.seek(offsets_start + bone_idx * axes_per_bone * 2)
             offsets = [br.u16() for _ in range(axes_per_bone)]
+            bscale = bone_scale[bone_idx]
+            bbase  = bone_base[bone_idx]
 
+            bone_axes: list[list[float]] = []
             for axis in range(axes_per_bone):
-                offset = offsets[axis]
-                if offset == 0:
-                    anim_data[:, bone_idx, axis] = bone_base[bone_idx, axis]
+                base_val = bbase[axis]
+                if offsets[axis] == 0:
+                    bone_axes.append([base_val] * num_frames)
                 else:
-                    br.seek(offsets_start + bone_idx * axes_per_bone * 2 + offset)
-                    raw = _read_rle_values(br, num_frames)          # (num_frames,)
-                    anim_data[:, bone_idx, axis] = (
-                        raw * bone_scale[bone_idx, axis] + bone_base[bone_idx, axis]
-                    )
+                    br.seek(offsets_start + bone_idx * axes_per_bone * 2 + offsets[axis])
+                    raw = _read_rle_values(br, num_frames)
+                    scale = bscale[axis]
+                    bone_axes.append([v * scale + base_val for v in raw])
+
+            positions[0].append(bone_axes[0])
+            positions[1].append(bone_axes[1])
+            positions[2].append(bone_axes[2])
+
+            rx, ry, rz = bone_axes[3], bone_axes[4], bone_axes[5]
+            quats[bone_idx] = [
+                Euler((rx[fi], ry[fi], rz[fi]), 'XYZ').to_quaternion()
+                for fi in range(num_frames)
+            ]
 
         blend = Blend()
-        blend.positions = anim_data[:, :, :3]   # (num_frames, num_bones, 3)
-        blend.rotations = anim_data[:, :, 3:]   # (num_frames, num_bones, 3)
+        blend.positions = positions
+        blend.rotation_quats = quats
         blends.append(blend)
-
     return blends
 
-def _read_rle_values(br: BinaryReader, num_frames: int) -> np.ndarray:
+def _read_rle_values(br: BinaryReader, num_frames: int) -> list[int]:
     """
     Read RLE-compressed animation values (GoldSrc format).
-    Returns a numpy array of int16 values, length num_frames.
+    Each run header is 2 bytes:
+      byte 0  = valid  (number of distinct values stored)
+      byte 1  = total  (total frames this run covers)
+    Followed by `valid` signed 16-bit values.
+    Frames beyond `valid` repeat the last value.
     """
-    values = np.empty(num_frames, dtype=np.float32)
+    values = [0] * num_frames
     frame_idx = 0
     while frame_idx < num_frames:
         valid = br.u8()
@@ -1007,12 +1021,9 @@ def _read_rle_values(br: BinaryReader, num_frames: int) -> np.ndarray:
             break
         run_vals = [br.i16() for _ in range(valid)]
         end = min(frame_idx + total, num_frames)
-        count = end - frame_idx
-        if count <= 0:
-            break
-        # fill with run_vals, clamping index to valid-1
-        indices = np.minimum(np.arange(count), valid - 1)
-        values[frame_idx:end] = np.array(run_vals, dtype=np.float32)[indices]
+        last = run_vals[-1]
+        for j in range(end - frame_idx):
+            values[frame_idx + j] = run_vals[j] if j < valid else last
         frame_idx = end
     return values
 
@@ -1021,7 +1032,7 @@ def _read_rle_values(br: BinaryReader, num_frames: int) -> np.ndarray:
 # Mesh parsing
 # ---------------------------------------------------------------------------
 
-def _load_models(br: BinaryReader, part: BodyPart) -> List[Model]:
+def _load_models(br: BinaryReader, part: BodyPart) -> list[Model]:
     br.seek(part.model_index)
     models = []
     for _ in range(part.num_models):
@@ -1046,7 +1057,7 @@ def _load_models(br: BinaryReader, part: BodyPart) -> List[Model]:
     return models
 
 
-def _read_meshes(br: BinaryReader, model: Model) -> List[Mesh]:
+def _read_meshes(br: BinaryReader, model: Model) -> list[Mesh]:
     br.seek(model.vert_info_index)
     vertex_bones = list(br.read_bytes(model.num_verts))
 
@@ -1079,10 +1090,10 @@ def _read_meshes(br: BinaryReader, model: Model) -> List[Mesh]:
 def _read_triangles(
     br: BinaryReader,
     mesh: Mesh,
-    vertices: List[Vector3],
-    vertex_bones: List[int],
-    normals: List[Vector3],
-    normal_bones: List[int],
+    vertices: list[Vector3],
+    vertex_bones: list[int],
+    normals: list[Vector3],
+    normal_bones: list[int],
 ) -> dict:
     """
     Returns a dict of numpy arrays instead of a list of MeshVertex dataclasses.

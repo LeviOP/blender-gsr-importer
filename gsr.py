@@ -20,7 +20,7 @@ from .mdl import Blend, Sequence
 from .spr import SpriteType
 from .wad import Wad
 from .tga import Tga
-from .animation import ActionContext, FCurveBuffer, FCurveBufferGroup
+from .animation import ActionContext, FCurveBuffer, FCurveBufferVec3, FCurveBufferQuat
 
 class ObjectType(IntEnum):
     Camera = 0
@@ -208,8 +208,8 @@ class Camera:
         # so we type as Any to avoid headache. I hate python :-)
         self.fcurves: dict[str, Any] = {}
 
-        self.fcurves["location"] = obj_action.fcurves("location", 3)
-        self.fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
+        self.fcurves["location"] = obj_action.fcurve_vec3("location")
+        self.fcurves["rotation_euler"] = obj_action.fcurve_vec3("rotation_euler")
         self.fcurves["lens"] = cam_action.fcurve("lens")
 
         self.object = cam_obj
@@ -224,11 +224,11 @@ class Camera:
                 case (ObjectField.Origin, origin):
                     self.origin = origin
                     location = origin * self.scale
-                    self.fcurves["location"].insert_vector(blender_frame, location)
+                    self.fcurves["location"].insert(blender_frame, location)
 
                 case (ObjectField.Angles, angles):
                     angles = goldsrc_to_blender_angles_camera(angles)
-                    self.fcurves["rotation_euler"].insert_vector(blender_frame, angles)
+                    self.fcurves["rotation_euler"].insert(blender_frame, angles)
 
                 case (ObjectField.Fov, fov):
                     self.fcurves["lens"].insert(
@@ -324,8 +324,8 @@ class ActiveObject:
 
 @dataclass
 class BoneFCurves:
-    location: FCurveBufferGroup
-    rotation_quaternion: FCurveBufferGroup
+    location: FCurveBufferVec3
+    rotation_quaternion: FCurveBufferQuat
 
 class StudioModel:
     def __init__(self, model_obj: bpy.types.Object, parent_obj: bpy.types.Object, shadows_only: bool = False):
@@ -337,6 +337,12 @@ class StudioModel:
         self.prev_bone_matrix_basis: dict[str, Matrix] = {}
         self.prev_body: Optional[int] = None
 
+        zero = Matrix(((0,0,0,0),(0,0,0,0),(0,0,0,0),(0,0,0,0)))
+        self.prev_bone_matrix_basis: dict[str, Matrix] = {
+            pose_bone.name: zero
+            for pose_bone in model_obj.pose.bones # type: ignore
+        }
+
         armature_data: bpy.types.Armature = model_obj.data # type: ignore
         for pose_bone in model_obj.pose.bones: # type: ignore
             pose_bone: bpy.types.PoseBone
@@ -344,8 +350,8 @@ class StudioModel:
             bone_name = pose_bone.name
             bone_string = f"pose.bones[\"{bone_name}\"]"
             self.bone_fcurves_map[bone_name] = BoneFCurves(
-                location=obj_action.fcurves(bone_string + ".location", 3),
-                rotation_quaternion=obj_action.fcurves(bone_string + ".rotation_quaternion", 4)
+                location=obj_action.fcurve_vec3(bone_string + ".location"),
+                rotation_quaternion=obj_action.fcurve_quat(bone_string + ".rotation_quaternion")
             )
             data_bone: bpy.types.Bone = armature_data.bones[bone_name]
             if pose_bone.parent:
@@ -481,13 +487,13 @@ class Entity:
         # see camera for why Any
         self.obj_fcurves: dict[str, Any] = {}
 
-        self.obj_fcurves["location"] = obj_action.fcurves("location", 3)
+        self.obj_fcurves["location"] = obj_action.fcurve_vec3("location")
 
         if self.model.type == ModelType.SPRITE:
-            self.obj_fcurves["scale"] = obj_action.fcurves("scale", 3)
+            self.obj_fcurves["scale"] = obj_action.fcurve_vec3("scale")
 
         if self.model.type == ModelType.STUDIO or self.model.type == ModelType.BRUSH or (self.model.type == ModelType.SPRITE and self.model.spr.header.type == SpriteType.PARALLEL_ORIENTED):
-            self.obj_fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
+            self.obj_fcurves["rotation_euler"] = obj_action.fcurve_vec3("rotation_euler")
 
         self.object["draw"] = False
         self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
@@ -538,7 +544,7 @@ class Entity:
         self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
         self.obj_fcurves["renderamt"] = obj_action.fcurve('["renderamt"]')
         self.obj_fcurves["renderfx"] = obj_action.fcurve('["renderfx"]')
-        self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
+        self.obj_fcurves["rendercolor"] = obj_action.fcurve_vec3('["rendercolor"]')
 
         if self.model.type == ModelType.STUDIO:
             self.studio_model = StudioModel(self.object, self.object)
@@ -609,7 +615,7 @@ class Entity:
                         rendercolor = (1.0, 1.0, 1.0)
                     else:
                         rendercolor = (rendercolor[0] / 255.0, rendercolor[1] / 255.0, rendercolor[2] / 255.0)
-                    self.obj_fcurves["rendercolor"].insert_vector(blender_frame, rendercolor)
+                    self.obj_fcurves["rendercolor"].insert(blender_frame, rendercolor)
 
                 case (ObjectField.RenderFx, renderfx):
                     self.renderfx = renderfx
@@ -659,14 +665,14 @@ class Entity:
 
         if self.prev_origin != self.origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert_vector(blender_frame, location)
+            self.obj_fcurves["location"].insert(blender_frame, location)
             self.prev_origin = self.origin.copy()
 
         if self.prev_angles != self.angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
             # GoldSrc inverts the y rotation for some reason...
             rotation_euler[1] = -rotation_euler[1]
-            self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
+            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
             self.prev_angles = self.angles.copy()
 
     # R_DrawSpriteModel
@@ -679,14 +685,14 @@ class Entity:
 
         if self.prev_origin != self.origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert_vector(blender_frame, location)
+            self.obj_fcurves["location"].insert(blender_frame, location)
             self.prev_origin = self.origin
 
         if self.prev_scale != scale:
             working_scale = scale
             if working_scale <= 0.0:
                 working_scale = 1.0
-            self.obj_fcurves["scale"].insert(blender_frame, working_scale)
+            self.obj_fcurves["scale"].insert(blender_frame, (working_scale,) * 3)
             self.prev_scale = scale
 
         # TODO: rotation on axis for other sprite orientations
@@ -694,7 +700,7 @@ class Entity:
         if self.model.spr.header.type == SpriteType.PARALLEL_ORIENTED:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
             # apply roll only
-            self.obj_fcurves["rotation_euler"][1].insert(blender_frame, rotation_euler[1])
+            self.obj_fcurves["rotation_euler"].insert(blender_frame, (0, rotation_euler[1], 0))
 
     # R_StudioSetUpTransform
     def studio_set_up_transform(self, cl: Cl) -> tuple[Vector, Vector]:
@@ -996,9 +1002,9 @@ class Entity:
         self.studio_render_model(blender_frame, model, studio_model, bone_transform)
 
         location = origin * self.blender_scale
-        self.obj_fcurves["location"].insert_vector(blender_frame, location)
+        self.obj_fcurves["location"].insert(blender_frame, location)
         rotation_euler = goldsrc_to_blender_angles(angles)
-        self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
+        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
         if self.weaponmodel is not None:
             weaponmodel = cl.get_model_by_index(self.weaponmodel)
@@ -1112,10 +1118,10 @@ class Entity:
             studio_model.prev_body = self.body
 
         for bone_idx, bone in enumerate(model.mdl.bones):
-            bone_fcurves = studio_model.bone_fcurves_map.get(bone.name)
-            bone_local_rest_matrix_inverse = studio_model.bone_local_rest_matrix_inverse_map.get(bone.name)
-            if not bone_fcurves or bone_local_rest_matrix_inverse is None:
-                continue
+            bone_fcurves = studio_model.bone_fcurves_map[bone.name]
+            bone_local_rest_matrix_inverse = studio_model.bone_local_rest_matrix_inverse_map[bone.name]
+            # if not bone_fcurves or bone_local_rest_matrix_inverse is None:
+            #     continue
 
             if bone.parent == -1:
                 animated_local = bone_transform[bone_idx]
@@ -1124,15 +1130,14 @@ class Entity:
 
             matrix_basis = bone_local_rest_matrix_inverse @ animated_local
 
-            prev = studio_model.prev_bone_matrix_basis.get(bone.name)
-            if prev is not None and matrix_basis == prev:
+            if matrix_basis == studio_model.prev_bone_matrix_basis[bone.name]:
                 continue
 
             studio_model.prev_bone_matrix_basis[bone.name] = matrix_basis.copy()
 
             location, quaternion, _ = matrix_basis.decompose()
-            bone_fcurves.location.insert_vector(blender_frame, location)
-            bone_fcurves.rotation_quaternion.insert_quaternion(blender_frame, quaternion)
+            bone_fcurves.location.insert(blender_frame, location)
+            bone_fcurves.rotation_quaternion.insert(blender_frame, quaternion)
 
     # R_StudioDrawModel
     def studio_draw_model(self, blender_frame: int, cl: Cl, mod: Mod):
@@ -1160,10 +1165,10 @@ class Entity:
         self.studio_render_model(blender_frame, self.model, self.studio_model, bone_transform)
 
         location = origin * self.blender_scale
-        self.obj_fcurves["location"].insert_vector(blender_frame, location)
+        self.obj_fcurves["location"].insert(blender_frame, location)
 
         rotation_euler = goldsrc_to_blender_angles(angles)
-        self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
+        self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
     # R_StudioPlayerBlend
     def studio_player_blend(self, sequence: Sequence, pitch: float) -> tuple[int, float]:
@@ -1268,36 +1273,45 @@ class Entity:
         s: float = f - frame
         adj = self.studio_calc_bone_adj(model, dadt, self.controller, self.prevcontroller, self.mouthopen)
 
-        num_frames = anim.positions.shape[0]
-        f0 = min(frame,     num_frames - 1)
-        f1 = min(frame + 1, num_frames - 1)
+        num_frames: int = len(anim.positions[0][0])
+        frame0_idx = min(frame, num_frames - 1)
+        frame1_idx = min(frame + 1, num_frames - 1)
 
-        # Shape: (num_bones, 3)
-        p0 = anim.positions[f0].tolist()  # list of [x, y, z]
-        p1 = anim.positions[f1].tolist()
-        r0 = anim.rotations[f0].tolist()
-        r1 = anim.rotations[f1].tolist()
+        one_minus_s = 1.0 - s
+        positions = anim.positions
+        quats = anim.rotation_quats
 
         num_bones = len(model.mdl.bones)
-        pos: list[Vector]     = []
-        q:   list[Quaternion] = []
+        pos: list[Vector] = [None] * num_bones # type: ignore
+        q: list[Quaternion] = [None] * num_bones # type: ignore
 
         for bone_idx in range(num_bones):
-            p0b = p0[bone_idx]
-            p1b = p1[bone_idx]
-            px = p0b[0] * (1.0 - s) + p1b[0] * s
-            py = p0b[1] * (1.0 - s) + p1b[1] * s
-            pz = p0b[2] * (1.0 - s) + p1b[2] * s
+            p0b = positions[0][bone_idx]
+            p1b = positions[1][bone_idx]
+            p2b = positions[2][bone_idx]
+            qb  = quats[bone_idx]
 
-            q1 = Euler(r0[bone_idx], 'XYZ').to_quaternion()
-            q2 = Euler(r1[bone_idx], 'XYZ').to_quaternion()
-            if q1.dot(q2) < 0:
-                q2 = -q2 # type: ignore
-            qr = q1.slerp(q2, s)
+            if s == 0.0:
+                px = p0b[frame0_idx]
+                py = p1b[frame0_idx]
+                pz = p2b[frame0_idx]
+            else:
+                px = p0b[frame0_idx] * one_minus_s + p0b[frame1_idx] * s
+                py = p1b[frame0_idx] * one_minus_s + p1b[frame1_idx] * s
+                pz = p2b[frame0_idx] * one_minus_s + p2b[frame1_idx] * s
 
-            for adj_idx, bc in enumerate(model.mdl.bone_controllers):
-                if bc.bone == bone_idx:
-                    axis = bc.type & STUDIO_TYPES
+            q1 = qb[frame0_idx]
+            q2 = qb[frame1_idx]
+
+            if s == 0.0:
+                qr = q1
+            else:
+                if q1.dot(q2) < 0:
+                    q2 = -q2 # type: ignore
+                qr = q1.slerp(q2, s)
+
+            if bone_idx in model.mdl.bone_controller_map:
+                for adj_idx, axis in model.mdl.bone_controller_map[bone_idx]:
                     if axis == STUDIO_XR:
                         qr = qr @ Euler((adj[adj_idx], 0.0, 0.0), 'XYZ').to_quaternion()
                     elif axis == STUDIO_YR:
@@ -1311,8 +1325,8 @@ class Entity:
                     elif axis == STUDIO_Z:
                         pz += adj[adj_idx]
 
-            pos.append(Vector((px, py, pz)))
-            q.append(qr)
+            pos[bone_idx] = Vector((px, py, pz))
+            q[bone_idx] = qr
 
         motion_bone_pos = pos[sequence.motion_bone]
         if sequence.motion_type & STUDIO_X:  motion_bone_pos.x = 0.0
@@ -1456,8 +1470,8 @@ class ViewmodelEntity(Entity):
         # see camera for why Any
         self.obj_fcurves: dict[str, Any] = {}
 
-        self.obj_fcurves["location"] = obj_action.fcurves("location", 3)
-        self.obj_fcurves["rotation_euler"] = obj_action.fcurves("rotation_euler", 3)
+        self.obj_fcurves["location"] = obj_action.fcurve_vec3("location")
+        self.obj_fcurves["rotation_euler"] = obj_action.fcurve_vec3("rotation_euler")
 
         self.object["draw"] = False
         self.obj_fcurves["draw"] = obj_action.fcurve('["draw"]')
@@ -1472,7 +1486,7 @@ class ViewmodelEntity(Entity):
         self.obj_fcurves["renderamt"] = obj_action.fcurve('["renderamt"]')
         self.obj_fcurves["renderfx"] = obj_action.fcurve('["renderfx"]')
         self.obj_fcurves["rendermode"] = obj_action.fcurve('["rendermode"]')
-        self.obj_fcurves["rendercolor"] = obj_action.fcurves('["rendercolor"]', 3)
+        self.obj_fcurves["rendercolor"] = obj_action.fcurve_vec3('["rendercolor"]')
 
         # stuff we don't need to get from the engine because we're a viewmodel
         self.gaitsequence = 0
@@ -1564,11 +1578,11 @@ class ViewmodelEntity(Entity):
 
         if self.origin != self.prev_origin:
             location = self.origin * self.blender_scale
-            self.obj_fcurves["location"].insert_vector(blender_frame, location)
+            self.obj_fcurves["location"].insert(blender_frame, location)
 
         if self.angles != self.prev_angles:
             rotation_euler = goldsrc_to_blender_angles(self.angles)
-            self.obj_fcurves["rotation_euler"].insert_vector(blender_frame, rotation_euler)
+            self.obj_fcurves["rotation_euler"].insert(blender_frame, rotation_euler)
 
 
 class BeamType(IntEnum):
@@ -1593,6 +1607,8 @@ class FBEAM(IntFlag):
     ISACTIVE     = 0x40000000
     FOREVER      = 0x80000000
 
+FBEAM_STARTENTITY = 0x00000001
+
 @dataclass
 class BeamParticle:
     org: Vector
@@ -1609,7 +1625,7 @@ class Beam:
     prev_freq: Optional[float] = None
     prev_speed: Optional[float] = None
     prev_brightness: Optional[float] = None
-    prev_flags: Optional[FBEAM] = None
+    prev_flags: Optional[int] = None
     prev_frame: Optional[float] = None
 
     # R_BeamSetup / specific R_BeamXXXX function
@@ -1705,9 +1721,9 @@ class Beam:
         for prop in ["amplitude", "segments", "width", "freq", "speed", "brightness", "frame", "flags"]:
             self.obj_fcurves[prop] = self.obj_action.fcurve(f'["{prop}"]')
 
-        self.obj_fcurves["color"] = self.obj_action.fcurves('["color"]', 3)
-        self.obj_fcurves["source"] = self.obj_action.fcurves('["source"]', 3)
-        self.obj_fcurves["delta"] = self.obj_action.fcurves('["delta"]', 3)
+        self.obj_fcurves["color"] = self.obj_action.fcurve_vec3('["color"]')
+        self.obj_fcurves["source"] = self.obj_action.fcurve_vec3('["source"]')
+        self.obj_fcurves["delta"] = self.obj_action.fcurve_vec3('["delta"]')
 
 
         match self.type:
@@ -1805,7 +1821,7 @@ class Beam:
                     self.draw = draw
                     self.obj_fcurves["draw"].insert(blender_frame, self.draw)
                 case (ObjectField.Flags, flags):
-                    self.flags = FBEAM(flags)
+                    self.flags = flags
                 case (ObjectField.Framerate, framerate):
                     self.framerate = framerate
                 case (ObjectField.Frame, frame):
@@ -1839,7 +1855,7 @@ class Beam:
             self.prev_segments = self.segments
 
         if self.prev_color != self.color:
-            self.obj_fcurves["color"].insert_vector(blender_frame, self.color)
+            self.obj_fcurves["color"].insert(blender_frame, self.color)
             self.prev_color = self.color
 
         if self.prev_amplitude != self.amplitude:
@@ -1865,12 +1881,12 @@ class Beam:
 
         if self.prev_source != self.source:
             source = self.source * self.blender_scale
-            self.obj_fcurves["source"].insert_vector(blender_frame, source)
+            self.obj_fcurves["source"].insert(blender_frame, source)
             self.prev_source = self.source.copy()
 
         if self.prev_delta != self.delta:
             delta = self.delta * self.blender_scale
-            self.obj_fcurves["delta"].insert_vector(blender_frame, delta)
+            self.obj_fcurves["delta"].insert(blender_frame, delta)
             self.prev_delta = self.delta.copy()
 
         match self.type:
@@ -1889,7 +1905,7 @@ class Beam:
 
     # R_DrawBeamFollow
     def draw_beam_follow(self, cl: Cl):
-        if self.flags & FBEAM.STARTENTITY:
+        if self.flags & FBEAM_STARTENTITY:
             last_org = self.particles[0].org if self.particles else None
             if last_org is None or (self.source - last_org).length >= 32:
                 self.particles.insert(0, BeamParticle(
@@ -1969,10 +1985,6 @@ class Gsr:
         self.br = GsrReader(file)
         self.fs = fs
         self.options = options
-
-        scene = bpy.context.scene
-        assert scene is not None
-        scene_action = ActionContext(scene)
 
         print(f"reading gsr")
 
@@ -2057,6 +2069,12 @@ class Gsr:
         self.lightstyles: dict[int, str] = {}
         self.prev_skyname: Optional[str] = None
 
+        scene = bpy.context.scene
+        assert scene is not None
+        scene_action = ActionContext(scene)
+        scene["time"] = 0.0
+        self.time_fcurve = scene_action.fcurve('["time"]')
+
         sprite_light: bpy.types.PointLight = bpy.data.lights.new("Point", type="POINT")
         sprite_light.shadow_soft_size = 8 * self.options.scale
         sprite_light.energy = 5.0
@@ -2074,7 +2092,6 @@ class Gsr:
         # default_view_layer.use_pass_cryptomatte_asset = True
         default_view_layer["draw_no_depth"] = False
         default_view_layer["draw_viewent"] = False
-        default_view_layer["time"] = 0.0
         timed_view_layers.append(default_view_layer)
 
         self.collection: bpy.types.Collection = bpy.data.collections.new("gsr_objects")
@@ -2093,7 +2110,6 @@ class Gsr:
         viewent_view_layer: bpy.types.ViewLayer = scene.view_layers.new("viewent")
         viewent_view_layer["draw_no_depth"] = False
         viewent_view_layer["draw_viewent"] = True
-        viewent_view_layer["time"] = 0.0
         # viewent_view_layer.use_pass_cryptomatte_asset = True
         timed_view_layers.append(viewent_view_layer)
         for child in viewent_view_layer.layer_collection.children: # type: ignore
@@ -2110,23 +2126,18 @@ class Gsr:
         no_depth_view_layer.samples = 1
         no_depth_view_layer["draw_no_depth"] = True
         no_depth_view_layer["draw_viewent"] = False
-        no_depth_view_layer["time"] = 0.0
         timed_view_layers.append(no_depth_view_layer)
         for child in no_depth_view_layer.layer_collection.children: # type: ignore
             if child.name == self.no_depth_collection.name:
                 continue
             child.exclude = True
 
-        self.time_fcurve = FCurveBufferGroup([
-            scene_action.fcurve(f'view_layers["{layer.name}"]["time"]') for
-            layer in timed_view_layers
-        ])
-
         gsr_nodes.create_compositing_nodes(default_view_layer, no_depth_view_layer, viewent_view_layer)
 
         filesize = os.fstat(self.br.stream.fileno()).st_size
         wm = bpy.context.window_manager
         assert wm is not None
+        last_progress = -1
         wm.progress_begin(0, filesize)
 
         # IEngine::Frame, Host_Frame, _Host_Frame
@@ -2161,7 +2172,6 @@ class Gsr:
                         raise Exception(f"unknown message type: {message_type}")
 
             # Host_UpdateScreen, SCR_UpdateScreen, VGui_Paint, VGuiWrap_Paint, VGui_ViewportPaintBackground, V_RenderView, R_RenderView, R_RenderScene
-            # HACKHACK: we shouldn't need two separate things......
             self.time_fcurve.insert(self.frame, self.cl.time)
 
             # R_SetupFrame, R_AnimateLight
@@ -2179,13 +2189,16 @@ class Gsr:
                         self.lightstyle_id_map[index][i] = (fcurve, value)
 
             # R_DrawEntitiesOnList / R_DrawTEntitiesOnList
-            for (i, entity) in self.entities.items():
+            for entity in self.entities.values():
                 if not entity.draw:
                     continue
 
+                rendermode = entity.rendermode
+                model_type = entity.model.type
+
                 # R_DrawEntitiesOnList
-                if entity.rendermode == RenderMode.Normal:
-                    if entity.model.type == ModelType.STUDIO:
+                if rendermode == RenderMode.Normal:
+                    if model_type == ModelType.STUDIO:
                         if entity.player:
                             entity.studio_draw_player(self.frame, self.cl, self.mod)
                         elif entity.movetype == MoveType.FOLLOW:
@@ -2194,20 +2207,20 @@ class Gsr:
                             # that we can use, I think
                         else:
                             entity.studio_draw_model(self.frame, self.cl, self.mod)
-                    elif entity.model.type == ModelType.BRUSH:
+                    elif model_type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
-                    elif entity.model.type == ModelType.SPRITE:
+                    elif model_type == ModelType.SPRITE:
                         if entity.body:
                             print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
                 # R_DrawTEntitiesOnList
                 else:
-                    if entity.rendermode == RenderMode.Glow and entity.model.type != ModelType.SPRITE:
+                    if rendermode == RenderMode.Glow and model_type != ModelType.SPRITE:
                         print("Non-sprite set to glow!", entity.object.name)
 
-                    if entity.model.type == ModelType.BRUSH:
+                    if model_type == ModelType.BRUSH:
                         entity.draw_brush_model(self.frame)
-                    elif entity.model.type == ModelType.SPRITE:
+                    elif model_type == ModelType.SPRITE:
                         if entity.body:
                             print("we should be doing R_GetAttachmentPoint here!", entity.object.name)
                         entity.draw_sprite_model(self.frame)
@@ -2226,7 +2239,12 @@ class Gsr:
                 self.viewent.studio_draw_model(self.frame, self.cl, self.mod)
 
             self.frame += 1
-            wm.progress_update(self.br.tell())
+            tell = self.br.tell()
+
+            progress = int((tell / filesize) * 10000)
+            if progress != last_progress:
+                wm.progress_update(tell)
+                last_progress = progress
 
         # I don't really want or need this in a separate function but pyright forces me to :)
         self.flush_keyframes()
@@ -2331,7 +2349,7 @@ class Gsr:
 
         for entity in self.entities.values():
             for fcurve in entity.obj_fcurves.values():
-                fcurve: FCurveBuffer | FCurveBufferGroup
+                fcurve: FCurveBuffer | FCurveBufferVec3 | FCurveBufferQuat
                 fcurve.flush()
 
             if entity.model.type == ModelType.STUDIO:
